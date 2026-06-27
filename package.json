@@ -1,6 +1,6 @@
 {
   "name": "pi-autoresearch-vkf",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Autoresearch with verifiable long-term scientific memory. A pi extension that gathers literature, stores it as VKF claims, runs experiments, and writes verified results back to a git-native knowledge bundle so future runs build on what was learned instead of rediscovering it.",
   "keywords": [
@@ -45,7 +45,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "bench": "node --experimental-strip-types benchmark/run.ts --seeds 500"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

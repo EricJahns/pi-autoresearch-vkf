@@ -17,8 +17,8 @@
  */
 import { rankIdeas, type IdeaInput } from "../extensions/pi-autoresearch-vkf/scoring.ts";
 import {
+  contextSimilarity,
   findContradictions,
-  topicSimilarity,
   type CardLike,
 } from "../extensions/pi-autoresearch-vkf/synthesis.ts";
 
@@ -240,12 +240,16 @@ export function runOurs(scenario: Scenario, seed: number): RunMetrics {
     };
     triedCards.push(card);
 
-    // Belief update: abandon the dead-end region around a loss.
+    // Belief update: a loss is evidence the whole *regime* is bad, so deprioritize
+    // untried ideas sharing the failed idea's context (the dead-end region). This
+    // is the memory advantage — a blind loop keeps reaching back into the region
+    // because each member looked individually attractive.
     if (!won) {
       for (const c of pool) {
         if (triedSet.has(c.id)) continue;
-        if (topicSimilarity(card, { id: c.id, title: c.title, text: text(c) }) > 0.5) {
-          beliefs.set(c.id, (beliefs.get(c.id) ?? c.priorEV) * 0.5);
+        const other: CardLike = { id: c.id, title: c.title, context: c.context, text: text(c) };
+        if (contextSimilarity(card, other) > 0.5) {
+          beliefs.set(c.id, (beliefs.get(c.id) ?? c.priorEV) * 0.25);
         }
       }
     }

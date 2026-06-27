@@ -22,10 +22,12 @@ const tinyLM: Scenario = {
     { id: "dropout", title: "Dropout tuning", mechanism: "dropout regularization rate", context: "training optimization tuning", trueDelta: 0.01, isPlaybook: true, priorEV: 0.78, recency: 0.2, reliability: 0.5 },
     { id: "wd", title: "Weight decay tuning", mechanism: "weight decay coefficient tuning", context: "training optimization tuning", trueDelta: 0.012, isPlaybook: true, priorEV: 0.76, recency: 0.2, reliability: 0.5 },
     { id: "ls", title: "Label smoothing", mechanism: "label smoothing factor", context: "training optimization tuning", trueDelta: 0.01, isPlaybook: true, priorEV: 0.74, recency: 0.2, reliability: 0.5 },
-    // Dead-end family: trying one tells you the region is bad.
-    { id: "lr_hi", title: "Aggressive LR increase", mechanism: "raise base learning rate aggressively", context: "learning rate magnitude regime", trueDelta: -0.03, priorEV: 0.55, recency: 0.4, reliability: 0.4, deadEndGroup: "lr-mag" },
-    { id: "lr_peak", title: "Very high peak LR", mechanism: "use very large peak learning rate value", context: "learning rate magnitude regime", trueDelta: -0.04, priorEV: 0.53, recency: 0.4, reliability: 0.4, deadEndGroup: "lr-mag" },
-    { id: "lr_dbl", title: "LR doubling", mechanism: "double the learning rate each phase", context: "learning rate magnitude regime", trueDelta: -0.05, priorEV: 0.51, recency: 0.4, reliability: 0.4, deadEndGroup: "lr-mag" },
+    // Dead-end family: tempting (high prior attraction) but all bad. Trying one
+    // should teach you to abandon the whole region — a blind loop keeps reaching
+    // back in because each member looks individually attractive.
+    { id: "lr_hi", title: "Aggressive LR increase", mechanism: "raise base learning rate aggressively", context: "learning rate magnitude regime", trueDelta: -0.03, priorEV: 0.7, recency: 0.6, reliability: 0.5, deadEndGroup: "lr-mag" },
+    { id: "lr_peak", title: "Very high peak LR", mechanism: "use very large peak learning rate value", context: "learning rate magnitude regime", trueDelta: -0.04, priorEV: 0.69, recency: 0.6, reliability: 0.5, deadEndGroup: "lr-mag" },
+    { id: "lr_dbl", title: "LR doubling", mechanism: "double the learning rate each phase", context: "learning rate magnitude regime", trueDelta: -0.05, priorEV: 0.68, recency: 0.6, reliability: 0.5, deadEndGroup: "lr-mag" },
     // Genuinely good, novel — and the two combo parents (same goal, diff mechanism).
     { id: "adagc", title: "Adaptive gradient clipping", mechanism: "adaptive ema gradient norm thresholding", context: "training stability control regime", trueDelta: 0.06, priorEV: 0.55, recency: 0.9, reliability: 0.6 },
     { id: "dsinit", title: "Depth-scaled init", mechanism: "depth dependent weight initialization scaling", context: "training stability control regime", trueDelta: 0.055, priorEV: 0.5, recency: 0.85, reliability: 0.55 },
@@ -57,8 +59,9 @@ const inferenceLatency: Scenario = {
     { id: "o2", title: "Compiler -O2", mechanism: "enable compiler optimization flags", context: "build configuration tuning", trueDelta: 0.02, isPlaybook: true, priorEV: 0.8, recency: 0.2, reliability: 0.5 },
     { id: "cache", title: "Result caching", mechanism: "memoize repeated computations", context: "build configuration tuning", trueDelta: 0.025, isPlaybook: true, priorEV: 0.78, recency: 0.2, reliability: 0.5 },
     { id: "batchsz", title: "Batch size sweep", mechanism: "tune inference batch size", context: "build configuration tuning", trueDelta: 0.015, isPlaybook: true, priorEV: 0.76, recency: 0.2, reliability: 0.5 },
-    { id: "thread_max", title: "Max out threads", mechanism: "raise worker thread count aggressively", context: "thread oversubscription regime", trueDelta: -0.03, priorEV: 0.55, recency: 0.4, reliability: 0.4, deadEndGroup: "threads" },
-    { id: "thread_spin", title: "Busy-spin workers", mechanism: "spin lock worker threads for latency", context: "thread oversubscription regime", trueDelta: -0.04, priorEV: 0.53, recency: 0.4, reliability: 0.4, deadEndGroup: "threads" },
+    { id: "thread_max", title: "Max out threads", mechanism: "raise worker thread count aggressively", context: "thread oversubscription regime", trueDelta: -0.03, priorEV: 0.7, recency: 0.6, reliability: 0.5, deadEndGroup: "threads" },
+    { id: "thread_spin", title: "Busy-spin workers", mechanism: "spin lock worker threads for latency", context: "thread oversubscription regime", trueDelta: -0.04, priorEV: 0.69, recency: 0.6, reliability: 0.5, deadEndGroup: "threads" },
+    { id: "thread_pin", title: "Aggressive core pinning", mechanism: "pin every worker to dedicated cores oversubscribed", context: "thread oversubscription regime", trueDelta: -0.05, priorEV: 0.68, recency: 0.6, reliability: 0.5, deadEndGroup: "threads" },
     // Combo parents: same goal (memory traffic reduction), different mechanism.
     { id: "quant", title: "Activation quantization", mechanism: "int8 activation quantization reduces bandwidth", context: "memory bandwidth reduction regime", trueDelta: 0.06, priorEV: 0.55, recency: 0.9, reliability: 0.6 },
     { id: "fuse", title: "Kernel fusion", mechanism: "operator fusion reduces memory round trips", context: "memory bandwidth reduction regime", trueDelta: 0.055, priorEV: 0.5, recency: 0.85, reliability: 0.55 },

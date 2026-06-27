@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.0 — unreleased
+
+Phase 4: global cross-project memory + a benchmark vs standard autoresearch.
+
+- **Global shared memory**: a cross-project VKF bundle (default
+  `~/.config/pi-autoresearch-vkf`, override `$PI_AUTORESEARCH_GLOBAL_ROOT`),
+  reusing the same card helpers via a `globalRoot()` resolver.
+- **`promote_to_global` tool**: copies a trusted card (source_verified+) into
+  global memory with a transaction; only durable, verified knowledge is shareable.
+- **`recall_memory` `scope`** param (`project` / `global` / `both`) surfaces
+  knowledge learned in other repos.
+- **Benchmark harness** (`benchmark/`): standard blind autoresearch vs ours over
+  deterministic, ground-truth idea-environments. Ours is driven through the *real*
+  `scoring.ts` (rankIdeas) and `synthesis.ts` (findContradictions), so it
+  benchmarks shipped code. Metrics: best improvement, unique mechanisms, wasted
+  experiments, dead-ends retried, synthesized ideas, found-optimum rate. `npm run
+  bench`; `--update-readme` writes results between `<!-- BENCH:START/END -->`.
+- Across scenarios, ours reaches the (synthesis-only) optimum 100% vs 0%, with
+  ~3× the best improvement, zero repeats, and fewer dead-end retries.
+
 ## 0.3.0 — unreleased
 
 Phase 3: hypothesis synthesis — generate novel ideas, don't just retrieve them.

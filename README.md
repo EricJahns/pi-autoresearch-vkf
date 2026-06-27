@@ -76,7 +76,8 @@ goal ─► recall_memory ─► gather literature ─► remember_claim (candid
 | Layer | Folder | Lifetime |
 |-------|--------|----------|
 | **Session** | `.auto/` | this run — goal, experiment log, measure script |
-| **Memory** | `.research-memory/` | **persists across runs** — a VKF bundle |
+| **Project memory** | `.research-memory/` | **persists across runs** — a VKF bundle |
+| **Global memory** | `~/.config/pi-autoresearch-vkf/.research-memory/` | **persists across projects** — trusted knowledge promoted from any repo |
 
 ### The memory lifecycle
 
@@ -104,12 +105,13 @@ verifier — is the defense against **memory poisoning**.
 | `init_research` | Scaffold the `.auto/` session and `.research-memory/` VKF bundle. |
 | `remember_claim` | Stage a literature-derived candidate claim (+ its source paper). |
 | `verify_claim` | Advance/downgrade a card's trust lifecycle (audited). |
-| `recall_memory` | Query memory: trusted claims, candidates, prior experiments, negatives, conflicts. |
+| `recall_memory` | Query memory (project / global / both): trusted claims, candidates, prior experiments, negatives, conflicts. |
 | `score_ideas` | Rank untested ideas by `EV × feasibility × evidence × novelty × info_gain ÷ cost`. |
 | `find_contradictions` | Mine memory for tensions between claims — each a seed for a novel hypothesis. |
 | `find_transfers` | Cross-domain mechanism search: same *how*, different *where*. |
 | `run_experiment` | Run the measurement command; capture `METRIC name=value`. |
 | `log_experiment` | Record a result, write it back to memory, update belief & lifecycle. |
+| `promote_to_global` | Copy a trusted card into the cross-project global memory. |
 | `research_status` | Show session experiments + memory lifecycle. |
 
 ### Skills
@@ -141,10 +143,54 @@ It's just markdown — human-readable, version-controllable, and auditable. Run
 `vkf validate .research-memory`, `vkf graph`, `vkf freshness`, or `vkf html` over
 it any time.
 
+## Benchmark
+
+Does verifiable memory + novelty scoring + synthesis actually search better than a
+blind loop? `npm run bench` runs both policies over deterministic, ground-truth
+idea-environments — driving *ours* through the real `scoring.ts` and `synthesis.ts`
+— and reports the difference. See [benchmark/README.md](benchmark/README.md) for
+exactly what is and isn't simulated.
+
+<!-- BENCH:START -->
+
+Mean over 500 seeds per scenario. "Standard" = blind loop (EV-greedy,
+no durable memory, no synthesis). "Ours" = VKF memory + novelty scoring +
+contradiction synthesis, driven through the real scoring/synthesis modules.
+
+## Tiny-LM validation loss (budget 10)
+
+| Metric | Standard | Ours |
+|---|---:|---:|
+| Best improvement (higher better) | 0.035 | **0.130** |
+| Unique mechanisms tried | 7.8 | **10.0** |
+| Wasted (repeat) experiments | 2.2 | **0.0** |
+| Dead-ends retried | 1.4 | **1.0** |
+| Synthesized ideas discovered | 0.0 | **1.0** |
+| Found optimum (rate) | 0% | **100%** |
+
+## Inference latency (budget 8)
+
+| Metric | Standard | Ours |
+|---|---:|---:|
+| Best improvement (higher better) | 0.043 | **0.150** |
+| Unique mechanisms tried | 6.3 | **8.0** |
+| Wasted (repeat) experiments | 1.7 | **0.0** |
+| Dead-ends retried | 1.7 | **1.0** |
+| Synthesized ideas discovered | 0.0 | **1.0** |
+| Found optimum (rate) | 0% | **100%** |
+
+<!-- BENCH:END -->
+
+The global optimum in each scenario is a *synthesized* idea a blind loop can't
+construct, so it reaches it 0% of the time; ours gets both parents tried (memory +
+novelty), then synthesis unlocks the combo.
+
 ## Configuration
 
 - `PI_AUTORESEARCH_VKF` — path to the `vkf` executable (overrides auto-detection).
 - `PI_AUTORESEARCH_VKF_CONDA_ENV` — conda env to find `vkf` in (default `VKF`).
+- `PI_AUTORESEARCH_GLOBAL_ROOT` — location of the global cross-project memory
+  bundle (default `~/.config/pi-autoresearch-vkf`).
 - `PI_AUTORESEARCH_SHORTCUT` — key for the fullscreen dashboard (default `ctrl+g`;
   set to `none` to disable).
 
@@ -154,6 +200,7 @@ it any time.
 npm install
 npm run typecheck   # tsc --noEmit
 npm test            # node --experimental-strip-types --test tests/*.test.mjs
+npm run bench       # standard autoresearch vs ours
 ```
 
 `npm test` requires a Node 22+ build with TypeScript stripping support (the same
@@ -162,15 +209,19 @@ the tests through a loader instead, e.g. `node --import tsx --test tests/*.test.
 
 ## Roadmap
 
-Done: the lean MVP (Phase 1), the **novelty scorer** (Phase 2), and the
-**hypothesis-synthesis layer** (Phase 3) — `find_contradictions` and
-`find_transfers` generate novel ideas from tensions and cross-domain mechanism
-analogies, and the `idea-tournament` skill debates candidates before testing.
-Planned next:
+All four planned phases are in: the lean MVP (Phase 1), the **novelty scorer**
+(Phase 2), the **hypothesis-synthesis layer** (Phase 3 — `find_contradictions`,
+`find_transfers`, `idea-tournament`), and **global cross-project memory + the
+benchmark** (Phase 4).
 
-- **Global shared memory** — a promoted cross-project bundle with a promotion path.
-- **Benchmark** — baseline vs +literature vs +VKF memory (best metric, unique
-  mechanisms tried, repeats avoided, failures not retried).
+Possible next steps:
+
+- **End-to-end live benchmark** — a real LLM agent on real repos with human
+  novelty ratings (the controlled harness here isolates the search policy).
+- **Paper Lantern MCP integration** — first-class literature search in
+  `knowledge-gather`.
+- **Bundle profile 2** — attach reproduction `verification` blocks to experiment
+  cards so memory validates at the strict `verified` profile.
 
 ## License
 
