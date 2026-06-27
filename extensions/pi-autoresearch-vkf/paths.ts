@@ -16,6 +16,7 @@
  * and the skills all agree on where things live.
  */
 import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 /** Name of the per-run session directory. */
@@ -58,6 +59,26 @@ export function memoryPaths(root: string) {
 /** Resolve the absolute directory for a given lifecycle bucket. */
 export function lifecycleDir(root: string, bucket: LifecycleDir): string {
   return join(memoryPaths(root).dir, bucket);
+}
+
+/**
+ * The "root" of the global, cross-project memory bundle.
+ *
+ * The card helpers are all keyed off a project `root` (the bundle lives at
+ * `<root>/.research-memory`). The global bundle reuses that exact abstraction: it
+ * is just a different root, so every card function works on it unchanged. Default
+ * location is `~/.config/pi-autoresearch-vkf`; override with
+ * `$PI_AUTORESEARCH_GLOBAL_ROOT`.
+ */
+export function globalRoot(): string {
+  const override = process.env.PI_AUTORESEARCH_GLOBAL_ROOT?.trim();
+  if (override) return override;
+  return join(homedir(), ".config", "pi-autoresearch-vkf");
+}
+
+/** True when the global memory bundle has been created. */
+export function hasGlobalMemory(): boolean {
+  return existsSync(memoryPaths(globalRoot()).bundle);
 }
 
 /** True when a `.auto/` session already exists at the given root. */

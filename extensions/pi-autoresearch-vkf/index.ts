@@ -15,7 +15,8 @@
  * as a VKF *candidate* with a transaction record; promotion to a trusted state is
  * an explicit, audited step — never silent.
  */
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 
@@ -50,7 +51,7 @@ import { appendLog } from "./jsonl.ts";
 import { parseMetrics } from "./metrics.ts";
 import { rankIdeas, type IdeaInput } from "./scoring.ts";
 import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
-import { ensureSessionDirs, hasSession, sessionPaths } from "./paths.ts";
+import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
 import { resolveRoot, runtimeStore, sessionKey } from "./runtime.ts";
 import { loadShortcuts } from "./shortcuts.ts";
@@ -332,6 +333,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     query: Type.Optional(Type.String({ description: "Free-text focus, matched against titles, assertions, mechanisms and tags. Omit to get the full trusted picture." })),
     limit: Type.Optional(Type.Number({ description: "Max claims to return per group. Default 10." })),
     include_candidates: Type.Optional(Type.Boolean({ description: "Include unverified candidates (status draft). Default true." })),
+    scope: Type.Optional(Type.Union([Type.Literal("project"), Type.Literal("global"), Type.Literal("both")], { description: "Which memory to search. 'project' (default) = this repo's bundle; 'global' = the cross-project shared bundle; 'both' = include global trusted knowledge learned elsewhere." })),
   });
 
   pi.registerTool({
@@ -392,6 +394,21 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         sections.push("");
         sections.push(`NEGATIVE RESULTS / CONFLICTS — avoid unless conditions change (${negatives.length + contradicted.length}):`);
         sections.push([...negatives.slice(0, limit).map(fmtExp), ...contradicted.slice(0, limit).map(fmtClaim)].join("\n"));
+      }
+
+      // Global, cross-project memory: trusted knowledge learned in other repos.
+      const scope = params.scope ?? "project";
+      if ((scope === "global" || scope === "both") && hasGlobalMemory()) {
+        const gRoot = globalRoot();
+        const globalTrusted = listCards(gRoot, { type: "claim" })
+          .filter(matches)
+          .filter((c) => isTrustedForHypotheses(c.meta["memory_state"] as MemoryState));
+        sections.push("");
+        sections.push(`GLOBAL trusted claims (learned in other projects) (${globalTrusted.length}):`);
+        sections.push(globalTrusted.length ? globalTrusted.slice(0, limit).map(fmtClaim).join("\n") : "  (none)");
+      } else if ((scope === "global" || scope === "both") && !hasGlobalMemory()) {
+        sections.push("");
+        sections.push("GLOBAL memory: empty (nothing promoted yet — use promote_to_global on replicated wins).");
       }
 
       // Freshness signal from the real CLI, when available.
@@ -768,6 +785,58 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           .filter(Boolean)
           .join("\n"),
         { outcome, experiment_id: expEntry.id },
+      );
+    },
+  });
+
+  // ── promote_to_global ──────────────────────────────────────────────────────
+  const PromoteParams = Type.Object({
+    id: Type.String({ description: "VKF id of a trusted card to promote to the global, cross-project memory." }),
+    reason: Type.Optional(Type.String({ description: "Why this is worth sharing across projects." })),
+  });
+
+  pi.registerTool({
+    name: "promote_to_global",
+    label: "Promote to global",
+    description:
+      "Copy a trusted card (source_verified, locally_tested, or replicated) from this project's memory into the global, cross-project bundle, so future runs in other repos can recall it. Only durable, verified knowledge should be promoted. Writes a transaction in the global bundle.",
+    parameters: PromoteParams,
+    async execute(_id, params: Static<typeof PromoteParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ promoted: boolean }>> {
+      const root = resolveRoot(ctx);
+      const sp = sessionPaths(root);
+      requireSession(root);
+      const config = readConfig(sp.config)!;
+
+      const card = findCard(root, params.id);
+      if (!card) return textResult(`No card "${params.id}" in this project's memory.`, { promoted: false });
+      const state = card.meta["memory_state"] as MemoryState;
+      if (!isTrustedForHypotheses(state)) {
+        return textResult(
+          `${params.id} is "${state}" — only source_verified / locally_tested / replicated cards may be promoted. Verify or test it first.`,
+          { promoted: false },
+        );
+      }
+
+      const gRoot = globalRoot();
+      scaffoldMemoryBundle(gRoot, "global", config.memoryProfile);
+      if (findCard(gRoot, params.id)) {
+        return textResult(`${params.id} is already in global memory.`, { promoted: false });
+      }
+      const content = readFileSync(card.path, "utf8");
+      writeCard(gRoot, "verified", basename(card.path), content);
+      writeTransaction(gRoot, {
+        action: "promoted",
+        target: params.id,
+        actor: config.owner,
+        reason: params.reason ?? `Promoted from project "${config.name}" (${state}).`,
+        changedFields: [`copied ${params.id} into global memory (from project ${config.name})`],
+      });
+      appendLog(sp.log, { event: "note", note: "promote_to_global", claim_id: params.id });
+
+      const gv = validationNote(gRoot, config.memoryProfile);
+      return textResult(
+        [`Promoted ${params.id} (${state}) to global memory at ${gRoot}/.research-memory.`, gv].join("\n"),
+        { promoted: true },
       );
     },
   });
