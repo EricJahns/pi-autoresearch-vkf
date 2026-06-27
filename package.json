@@ -1,0 +1,64 @@
+{
+  "name": "pi-autoresearch-vkf",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Autoresearch with verifiable long-term scientific memory. A pi extension that gathers literature, stores it as VKF claims, runs experiments, and writes verified results back to a git-native knowledge bundle so future runs build on what was learned instead of rediscovering it.",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "autoresearch",
+    "vkf",
+    "knowledge",
+    "research",
+    "memory",
+    "coding-agent"
+  ],
+  "license": "MIT",
+  "author": "Eric Jahns <jejahns20@gmail.com>",
+  "homepage": "https://github.com/EricJahns/pi-autoresearch-vkf#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EricJahns/pi-autoresearch-vkf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EricJahns/pi-autoresearch-vkf/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "files": [
+    "extensions",
+    "skills",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@earendil-works/pi-tui": "^0.74.0",
+    "@sinclair/typebox": "^0.34.41",
+    "@types/node": "^22.20.0",
+    "typescript": "^5.6.0"
+  }
+}
