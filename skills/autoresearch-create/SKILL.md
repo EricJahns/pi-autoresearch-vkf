@@ -18,6 +18,7 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 - `remember_claim` — stage a literature-derived candidate claim (+ its source paper).
 - `verify_claim` — advance/downgrade a card's trust lifecycle (audited).
 - `recall_memory` — query memory for trusted claims, candidates, prior experiments, negatives, conflicts.
+- `score_ideas` — rank untested ideas by priority (EV × feasibility × evidence × novelty × info_gain ÷ cost).
 - `run_experiment` — run the measurement command, capture `METRIC name=value`.
 - `log_experiment` — record a result and write it back to memory (updates belief & lifecycle).
 - `research_status` — show session + memory state.

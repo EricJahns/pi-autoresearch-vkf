@@ -262,6 +262,11 @@ export interface ClaimInput {
   recency_score?: number;
   reliability_score?: number;
   confidence?: number;
+  /** Priority-scoring inputs (see ./scoring.ts); all optional, in [0,1]. */
+  expected_value?: number;
+  feasibility?: number;
+  info_gain?: number;
+  implementation_cost?: number;
   owner: string;
 }
 
@@ -284,6 +289,10 @@ export function buildClaimCard(input: ClaimInput): { id: string; file: string; c
   if (input.source_url) meta["source_url"] = input.source_url;
   if (input.recency_score !== undefined) meta["recency_score"] = input.recency_score;
   if (input.reliability_score !== undefined) meta["reliability_score"] = input.reliability_score;
+  if (input.expected_value !== undefined) meta["expected_value"] = input.expected_value;
+  if (input.feasibility !== undefined) meta["feasibility"] = input.feasibility;
+  if (input.info_gain !== undefined) meta["info_gain"] = input.info_gain;
+  if (input.implementation_cost !== undefined) meta["implementation_cost"] = input.implementation_cost;
 
   const evidence = input.paper_id
     ? [`  - source: ${input.paper_id}`, "    type: paper", "    strength: moderate"]

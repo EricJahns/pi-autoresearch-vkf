@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 — unreleased
+
+Phase 2: novelty & priority scoring.
+
+- **`score_ideas` tool** ranks untested claims by
+  `priority = expected_value × feasibility × evidence_strength × novelty ×
+  info_gain ÷ implementation_cost`, returning the full factor breakdown.
+- **`scoring.ts`** (pure, unit-tested): token Jaccard novelty that penalizes
+  similarity to already-tried experiments, settled claims, and a configurable
+  standard playbook; evidence strength derived from verification level +
+  reliability; info-gain from belief uncertainty.
+- **Scoring inputs on claims**: `remember_claim` accepts optional
+  `expected_value`, `feasibility`, `info_gain`, `implementation_cost`; all factors
+  fall back to sensible derivations when omitted.
+- `hypothesis-loop` now scores instead of guessing the next experiment.
+
 ## 0.1.0 — unreleased
 
 Initial MVP: autoresearch with verifiable long-term memory.

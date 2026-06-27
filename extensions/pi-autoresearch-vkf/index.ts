@@ -48,6 +48,7 @@ import {
 } from "./experiments.ts";
 import { appendLog } from "./jsonl.ts";
 import { parseMetrics } from "./metrics.ts";
+import { rankIdeas, type IdeaInput } from "./scoring.ts";
 import { ensureSessionDirs, hasSession, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
 import { resolveRoot, runtimeStore, sessionKey } from "./runtime.ts";
@@ -164,6 +165,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     confidence: Type.Optional(Type.Number({ description: "Initial belief in [0,1] that this helps our goal. Default 0.5." })),
     recency_score: Type.Optional(Type.Number({ description: "How recent the supporting literature is, [0,1]." })),
     reliability_score: Type.Optional(Type.Number({ description: "How reliable/robust the evidence is, [0,1]. A new paper can be high recency, low reliability." })),
+    expected_value: Type.Optional(Type.Number({ description: "Scoring input: how much this could move the metric if it works, [0,1]. Defaults to belief." })),
+    feasibility: Type.Optional(Type.Number({ description: "Scoring input: how easy to implement within scope, [0,1]. Default 0.6." })),
+    info_gain: Type.Optional(Type.Number({ description: "Scoring input: how much a test would teach us, [0,1]. Defaults to belief uncertainty." })),
+    implementation_cost: Type.Optional(Type.Number({ description: "Scoring input: relative cost to try, (0,1]. Default 0.4." })),
     paper: Type.Optional(PaperSub),
   });
 
@@ -215,6 +220,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         source_url: params.paper?.source_url,
         recency_score: params.recency_score,
         reliability_score: params.reliability_score,
+        expected_value: params.expected_value,
+        feasibility: params.feasibility,
+        info_gain: params.info_gain,
+        implementation_cost: params.implementation_cost,
         confidence: params.confidence,
         owner: config.owner,
       });
@@ -397,6 +406,95 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         candidates: candidates.length,
         experiments: experiments.length,
       });
+    },
+  });
+
+  // ── score_ideas ──────────────────────────────────────────────────────────────
+  const ScoreParams = Type.Object({
+    query: Type.Optional(Type.String({ description: "Restrict to ideas whose text matches this focus." })),
+    limit: Type.Optional(Type.Number({ description: "How many ranked ideas to return. Default 8." })),
+    include_candidates: Type.Optional(Type.Boolean({ description: "Score unverified candidates too, not just source_verified+ claims. Default true." })),
+  });
+
+  pi.registerTool({
+    name: "score_ideas",
+    label: "Score ideas",
+    description:
+      "Rank untested ideas in memory by priority = expected_value × feasibility × evidence × novelty × info_gain ÷ cost. Novelty penalizes ideas close to what's already been tried or to the standard playbook. Use in the hypothesis loop to pick the next experiment deliberately, not at random. Returns the full factor breakdown so the ranking is auditable.",
+    parameters: ScoreParams,
+    async execute(_id, params: Static<typeof ScoreParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ ranked: number; top?: string }>> {
+      const root = resolveRoot(ctx);
+      const sp = sessionPaths(root);
+      requireSession(root);
+      const limit = params.limit ?? 8;
+      const includeCandidates = params.include_candidates ?? true;
+
+      const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+      const str = (v: unknown): string => String(v ?? "");
+
+      const q = params.query?.toLowerCase().trim();
+      const cardText = (c: ReturnType<typeof listCards>[number]): string =>
+        [c.meta["title"], c.meta["mechanism"], c.meta["context"], c.body].map(str).join(" ");
+
+      const claims = listCards(root, { type: "claim" });
+      const exploredStates = new Set<MemoryState>(["locally_tested", "replicated", "contradicted"]);
+      const untestedStates = new Set<MemoryState>(
+        includeCandidates ? ["candidate", "source_verified"] : ["source_verified"],
+      );
+
+      // Explored ground: tried experiments + already-settled claims.
+      const explored: string[] = [
+        ...listCards(root, { type: "experiment" }).map(cardText),
+        ...claims.filter((c) => exploredStates.has(c.meta["memory_state"] as MemoryState)).map(cardText),
+      ];
+
+      const ideas: IdeaInput[] = claims
+        .filter((c) => untestedStates.has(c.meta["memory_state"] as MemoryState))
+        .filter((c) => !q || cardText(c).toLowerCase().includes(q))
+        .map((c) => ({
+          id: str(c.meta["id"]),
+          title: str(c.meta["title"]),
+          text: cardText(c),
+          belief: num(c.meta["belief"]) ?? 0.5,
+          verification_level: c.meta["verification_level"] as IdeaInput["verification_level"],
+          recency_score: num(c.meta["recency_score"]),
+          reliability_score: num(c.meta["reliability_score"]),
+          expected_value: num(c.meta["expected_value"]),
+          feasibility: num(c.meta["feasibility"]),
+          info_gain: num(c.meta["info_gain"]),
+          implementation_cost: num(c.meta["implementation_cost"]),
+        }));
+
+      if (ideas.length === 0) {
+        return textResult(
+          "No untested ideas to score. Gather literature (knowledge-gather) and remember_claim some candidates first.",
+          { ranked: 0 },
+        );
+      }
+
+      const ranked = rankIdeas(ideas, { explored });
+      const pct = (n: number): string => (n * 100).toFixed(0) + "%";
+      const lines = ranked.slice(0, limit).map((r, i) => {
+        const f = r.factors;
+        return (
+          `${i + 1}. [${r.priority.toFixed(2)}] ${r.id} — ${r.title}\n` +
+          `     EV ${pct(f.expected_value)} · feas ${pct(f.feasibility)} · evidence ${pct(f.evidence_strength)} · ` +
+          `novelty ${pct(f.novelty)} · info-gain ${pct(f.info_gain)} · cost ${pct(f.implementation_cost)}` +
+          (r.max_similarity > 0.5 ? `  ⚠ ${pct(r.max_similarity)} similar to explored/playbook` : "")
+        );
+      });
+
+      appendLog(sp.log, { event: "note", note: "score_ideas", ranked: ranked.length, top: ranked[0]?.id });
+      return textResult(
+        [
+          `Ranked ${ranked.length} untested idea(s) by priority:`,
+          "",
+          ...lines,
+          "",
+          "Pick from the top, but weigh novelty: a slightly-lower-priority idea that explores new ground can beat a high-EV repeat.",
+        ].join("\n"),
+        { ranked: ranked.length, top: ranked[0]?.id },
+      );
     },
   });
 

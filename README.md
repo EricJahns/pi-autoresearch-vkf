@@ -105,6 +105,7 @@ verifier — is the defense against **memory poisoning**.
 | `remember_claim` | Stage a literature-derived candidate claim (+ its source paper). |
 | `verify_claim` | Advance/downgrade a card's trust lifecycle (audited). |
 | `recall_memory` | Query memory: trusted claims, candidates, prior experiments, negatives, conflicts. |
+| `score_ideas` | Rank untested ideas by `EV × feasibility × evidence × novelty × info_gain ÷ cost`. |
 | `run_experiment` | Run the measurement command; capture `METRIC name=value`. |
 | `log_experiment` | Record a result, write it back to memory, update belief & lifecycle. |
 | `research_status` | Show session experiments + memory lifecycle. |
@@ -156,10 +157,11 @@ the tests through a loader instead, e.g. `node --import tsx --test tests/*.test.
 
 ## Roadmap
 
-This is the lean MVP. Planned next:
+Done: the lean MVP (Phase 1) and the **novelty scorer** (Phase 2) — `score_ideas`
+ranks untested ideas by `priority = EV × feasibility × evidence × novelty ×
+info_gain ÷ cost`, with belief updated per experiment and recency vs reliability
+tracked separately. Planned next:
 
-- **Novelty scorer & belief dynamics** — `priority = EV × feasibility × evidence ×
-  novelty × info_gain ÷ cost`; separate recency vs reliability.
 - **Contradiction miner & cross-domain transfer** — generate hypotheses from
   tensions between claims and from mechanism (not keyword) search.
 - **Idea tournament** — multi-agent debate over candidate ideas before testing.

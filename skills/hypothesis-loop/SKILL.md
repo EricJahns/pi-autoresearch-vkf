@@ -16,15 +16,16 @@ ideas deliberately and you never repeat settled work.
    **negatives/conflicts**. The tried/negative lists are guardrails — do not
    re-run them unless conditions changed.
 
-2. **Pick an idea.** Prefer ideas backed by `source_verified`+ claims. Balance:
-   - **expected value** — how much it could move the metric,
-   - **feasibility** — implementation cost within scope,
-   - **evidence strength** — confidence/reliability of the backing claim,
-   - **novelty** — distance from already-tried and from the standard playbook;
-     penalize ideas close to exhausted/negative memory,
-   - **information gain** — even a likely-small win that explores a new region can
-     be worth it.
-   Don't always take the highest expected win — sometimes explore.
+2. **Pick an idea — score, don't guess.** Call `score_ideas`. It ranks untested
+   claims by
+   `priority = expected_value × feasibility × evidence × novelty × info_gain ÷ cost`,
+   where **novelty** penalizes ideas close to what's already been tried or to the
+   standard playbook (gradient clipping, cosine schedule, dropout, …). Read the
+   factor breakdown — it tells you *why* an idea ranks where it does. Prefer ideas
+   backed by `source_verified`+ claims. Don't blindly take rank #1: a
+   slightly-lower-priority idea that explores new ground can beat a high-EV
+   repeat. The `⚠ similar to explored/playbook` flag marks ideas you've
+   effectively already covered.
 
 3. **Form a structured hypothesis** before touching code:
    - *mechanism* (why it should work), *intervention* (the smallest change),
