@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — unreleased
+
+Phase 3: hypothesis synthesis — generate novel ideas, don't just retrieve them.
+
+- **`synthesis.ts`** (pure, unit-tested): mechanism/context/topic similarity;
+  contradiction mining (explicit conflicts, outcome flips, same-goal/different-
+  mechanism); cross-domain transfer scored by `mechanism_sim × (1 − context_sim)`.
+- **`find_contradictions` tool** — surfaces tensions in memory as generative
+  hypothesis questions.
+- **`find_transfers` tool** — mechanism (not keyword) search for cross-domain
+  analogies to import into the current problem.
+- **Idea provenance** — `remember_claim`/`buildClaimCard` accept `origin`
+  (literature / contradiction / transfer / synthesis) and `derived_from`, so
+  agent-synthesized hypotheses are traceable to their seeds.
+- **New skills**: `contradiction-miner`, `cross-domain-transfer`,
+  `idea-tournament`; orchestrator updated with a synthesis step.
+
 ## 0.2.0 — unreleased
 
 Phase 2: novelty & priority scoring.

@@ -106,6 +106,8 @@ verifier — is the defense against **memory poisoning**.
 | `verify_claim` | Advance/downgrade a card's trust lifecycle (audited). |
 | `recall_memory` | Query memory: trusted claims, candidates, prior experiments, negatives, conflicts. |
 | `score_ideas` | Rank untested ideas by `EV × feasibility × evidence × novelty × info_gain ÷ cost`. |
+| `find_contradictions` | Mine memory for tensions between claims — each a seed for a novel hypothesis. |
+| `find_transfers` | Cross-domain mechanism search: same *how*, different *where*. |
 | `run_experiment` | Run the measurement command; capture `METRIC name=value`. |
 | `log_experiment` | Record a result, write it back to memory, update belief & lifecycle. |
 | `research_status` | Show session experiments + memory lifecycle. |
@@ -118,6 +120,9 @@ verifier — is the defense against **memory poisoning**.
 | `knowledge-gather` | Find candidate techniques (Paper Lantern / arXiv / Semantic Scholar / GitHub). |
 | `claim-extract` | Distill sources into reusable claim cards. |
 | `claim-verify` | Check citations & codebase fit — the trust layer. |
+| `contradiction-miner` | Turn tensions in memory into novel hypotheses. |
+| `cross-domain-transfer` | Import a mechanism from another field. |
+| `idea-tournament` | Multi-perspective debate to pick the 2–3 ideas worth testing. |
 | `hypothesis-loop` | Pick the next idea and run the smallest falsifying experiment. |
 | `research-report` | The auditable lineage report. |
 
@@ -157,16 +162,15 @@ the tests through a loader instead, e.g. `node --import tsx --test tests/*.test.
 
 ## Roadmap
 
-Done: the lean MVP (Phase 1) and the **novelty scorer** (Phase 2) — `score_ideas`
-ranks untested ideas by `priority = EV × feasibility × evidence × novelty ×
-info_gain ÷ cost`, with belief updated per experiment and recency vs reliability
-tracked separately. Planned next:
+Done: the lean MVP (Phase 1), the **novelty scorer** (Phase 2), and the
+**hypothesis-synthesis layer** (Phase 3) — `find_contradictions` and
+`find_transfers` generate novel ideas from tensions and cross-domain mechanism
+analogies, and the `idea-tournament` skill debates candidates before testing.
+Planned next:
 
-- **Contradiction miner & cross-domain transfer** — generate hypotheses from
-  tensions between claims and from mechanism (not keyword) search.
-- **Idea tournament** — multi-agent debate over candidate ideas before testing.
-- **Global shared memory** — a promoted cross-project bundle.
-- **Benchmark** — baseline vs +literature vs +VKF memory.
+- **Global shared memory** — a promoted cross-project bundle with a promotion path.
+- **Benchmark** — baseline vs +literature vs +VKF memory (best metric, unique
+  mechanisms tried, repeats avoided, failures not retried).
 
 ## License
 

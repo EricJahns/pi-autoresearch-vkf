@@ -19,6 +19,8 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 - `verify_claim` — advance/downgrade a card's trust lifecycle (audited).
 - `recall_memory` — query memory for trusted claims, candidates, prior experiments, negatives, conflicts.
 - `score_ideas` — rank untested ideas by priority (EV × feasibility × evidence × novelty × info_gain ÷ cost).
+- `find_contradictions` — mine memory for tensions that seed novel hypotheses.
+- `find_transfers` — cross-domain mechanism search for surprising analogies.
 - `run_experiment` — run the measurement command, capture `METRIC name=value`.
 - `log_experiment` — record a result and write it back to memory (updates belief & lifecycle).
 - `research_status` — show session + memory state.
@@ -52,6 +54,12 @@ transaction record — promotion is an explicit, audited step.
 4. **Gather literature** → use the **knowledge-gather** skill to find candidate
    techniques, then **claim-extract** to turn them into structured claims via
    `remember_claim`. Then **claim-verify** to check citations and codebase fit.
+
+4b. **Synthesize new ideas** (optional but high-value) → mine memory for novelty
+   instead of only retrieving it: **contradiction-miner** (tensions →
+   hypotheses), **cross-domain-transfer** (import a mechanism from another field).
+   When many ideas compete for budget, run the **idea-tournament** skill to pick
+   the 2–3 worth testing.
 
 5. **Loop** → use the **hypothesis-loop** skill: `recall_memory` → pick the
    highest-value, sufficiently-novel idea → implement the smallest falsifying

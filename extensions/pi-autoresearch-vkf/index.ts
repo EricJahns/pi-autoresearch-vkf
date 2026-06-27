@@ -49,6 +49,7 @@ import {
 import { appendLog } from "./jsonl.ts";
 import { parseMetrics } from "./metrics.ts";
 import { rankIdeas, type IdeaInput } from "./scoring.ts";
+import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
 import { ensureSessionDirs, hasSession, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
 import { resolveRoot, runtimeStore, sessionKey } from "./runtime.ts";
@@ -169,6 +170,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     feasibility: Type.Optional(Type.Number({ description: "Scoring input: how easy to implement within scope, [0,1]. Default 0.6." })),
     info_gain: Type.Optional(Type.Number({ description: "Scoring input: how much a test would teach us, [0,1]. Defaults to belief uncertainty." })),
     implementation_cost: Type.Optional(Type.Number({ description: "Scoring input: relative cost to try, (0,1]. Default 0.4." })),
+    origin: Type.Optional(Type.Union([Type.Literal("literature"), Type.Literal("contradiction"), Type.Literal("transfer"), Type.Literal("synthesis")], { description: "Where this idea came from. Use 'contradiction'/'transfer'/'synthesis' for agent-generated hypotheses (vs 'literature' for extracted claims). Default 'literature'." })),
+    derived_from: Type.Optional(Type.Array(Type.String(), { description: "Ids of existing cards this hypothesis was synthesized from (must already exist in memory)." })),
     paper: Type.Optional(PaperSub),
   });
 
@@ -224,6 +227,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         feasibility: params.feasibility,
         info_gain: params.info_gain,
         implementation_cost: params.implementation_cost,
+        origin: params.origin,
+        derived_from: params.derived_from?.filter((id) => findCard(root, id)),
         confidence: params.confidence,
         owner: config.owner,
       });
@@ -494,6 +499,104 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           "Pick from the top, but weigh novelty: a slightly-lower-priority idea that explores new ground can beat a high-EV repeat.",
         ].join("\n"),
         { ranked: ranked.length, top: ranked[0]?.id },
+      );
+    },
+  });
+
+  // ── find_contradictions ──────────────────────────────────────────────────────
+  const toCardLike = (c: ReturnType<typeof listCards>[number]): CardLike => {
+    const s = (v: unknown): string => String(v ?? "");
+    return {
+      id: s(c.meta["id"]),
+      title: s(c.meta["title"]),
+      mechanism: c.meta["mechanism"] ? s(c.meta["mechanism"]) : undefined,
+      context: c.meta["context"] ? s(c.meta["context"]) : undefined,
+      text: [c.meta["title"], c.meta["context"], c.body].map(s).join(" "),
+      memory_state: c.meta["memory_state"] as MemoryState | undefined,
+      conflicts_with: Array.isArray(c.meta["conflicts_with"])
+        ? (c.meta["conflicts_with"] as unknown[]).map(s)
+        : [],
+    };
+  };
+
+  const ContradictionParams = Type.Object({
+    limit: Type.Optional(Type.Number({ description: "Max tensions to return. Default 10." })),
+  });
+  pi.registerTool({
+    name: "find_contradictions",
+    label: "Find contradictions",
+    description:
+      "Mine the memory for tensions between claims — explicit conflicts, the same idea that won here and lost there, and different mechanisms aimed at the same goal. Each tension is a generative question: a seed for a novel hypothesis that resolving it would answer. More likely to produce novelty than retrieving more papers.",
+    parameters: ContradictionParams,
+    async execute(_id, params: Static<typeof ContradictionParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ tensions: number }>> {
+      const root = resolveRoot(ctx);
+      requireSession(root);
+      const limit = params.limit ?? 10;
+      const cards = listCards(root, { type: "claim" }).map(toCardLike);
+      const tensions = findContradictions(cards);
+      if (tensions.length === 0) {
+        return textResult("No contradictions found yet. Gather and verify more claims, or run experiments that settle existing ones.", { tensions: 0 });
+      }
+      const lines = tensions.slice(0, limit).map((t, i) =>
+        `${i + 1}. [${t.kind}] ${t.detail}\n     → ${t.question}`,
+      );
+      refreshWidget(ctx, root);
+      return textResult(
+        [
+          `Found ${tensions.length} tension(s) — each is a hypothesis seed:`,
+          "",
+          ...lines,
+          "",
+          "Turn a promising tension into a hypothesis with remember_claim (origin: 'contradiction', derived_from: the two ids).",
+        ].join("\n"),
+        { tensions: tensions.length },
+      );
+    },
+  });
+
+  // ── find_transfers ───────────────────────────────────────────────────────────
+  const TransferParams = Type.Object({
+    problem: Type.String({ description: "The target problem: describe its MECHANISM (what needs controlling/stabilizing/etc.), not keywords. e.g. 'stabilize discrete nonlinear dynamics during gradient training'." }),
+    context: Type.Optional(Type.String({ description: "The target domain/context, e.g. 'spiking neural networks'. Used to prefer cross-domain analogies." })),
+    limit: Type.Optional(Type.Number({ description: "Max transfer candidates. Default 8." })),
+  });
+
+  pi.registerTool({
+    name: "find_transfers",
+    label: "Find transfers",
+    description:
+      "Cross-domain mechanism search: find claims whose MECHANISM matches the target problem's structure but come from a DIFFERENT domain. Same how, different where — the source of surprising, novel ideas that keyword search misses. Returns transfer candidates to adapt into the current problem.",
+    parameters: TransferParams,
+    async execute(_id, params: Static<typeof TransferParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ transfers: number; top?: string }>> {
+      const root = resolveRoot(ctx);
+      requireSession(root);
+      const limit = params.limit ?? 8;
+      const target: CardLike = {
+        id: "__target__",
+        title: "target problem",
+        mechanism: params.problem,
+        context: params.context ?? "",
+        text: `${params.problem} ${params.context ?? ""}`,
+      };
+      const cards = listCards(root, { type: "claim" }).map(toCardLike);
+      const transfers = findTransfers(target, cards);
+      if (transfers.length === 0) {
+        return textResult("No cross-domain transfer candidates found. Describe the problem by its mechanism, or gather claims from other domains first.", { transfers: 0 });
+      }
+      const pct = (n: number): string => (n * 100).toFixed(0) + "%";
+      const lines = transfers.slice(0, limit).map((t, i) =>
+        `${i + 1}. [${t.transfer_score.toFixed(2)}] ${t.from} — ${t.title}\n     mechanism sim ${pct(t.mechanism_similarity)} · context sim ${pct(t.context_similarity)} (lower = more cross-domain)`,
+      );
+      refreshWidget(ctx, root);
+      return textResult(
+        [
+          `Found ${transfers.length} transfer candidate(s) for: "${params.problem}"`,
+          "",
+          ...lines,
+          "",
+          "Adapt a candidate's mechanism into the target with remember_claim (origin: 'transfer', derived_from: the source id).",
+        ].join("\n"),
+        { transfers: transfers.length, top: transfers[0]?.from },
       );
     },
   });

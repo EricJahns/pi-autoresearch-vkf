@@ -267,6 +267,10 @@ export interface ClaimInput {
   feasibility?: number;
   info_gain?: number;
   implementation_cost?: number;
+  /** Where the idea came from: literature vs an agent-synthesized hypothesis. */
+  origin?: "literature" | "contradiction" | "transfer" | "synthesis";
+  /** Ids of cards this idea was synthesized from (for contradiction/transfer). */
+  derived_from?: string[];
   owner: string;
 }
 
@@ -293,6 +297,8 @@ export function buildClaimCard(input: ClaimInput): { id: string; file: string; c
   if (input.feasibility !== undefined) meta["feasibility"] = input.feasibility;
   if (input.info_gain !== undefined) meta["info_gain"] = input.info_gain;
   if (input.implementation_cost !== undefined) meta["implementation_cost"] = input.implementation_cost;
+  meta["origin"] = input.origin ?? "literature";
+  if (input.derived_from && input.derived_from.length) meta["derived_from"] = input.derived_from;
 
   const evidence = input.paper_id
     ? [`  - source: ${input.paper_id}`, "    type: paper", "    strength: moderate"]
