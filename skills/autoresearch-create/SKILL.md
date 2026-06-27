@@ -52,8 +52,10 @@ transaction record — promotion is an explicit, audited step.
    skip rediscovery.
 
 4. **Gather literature** → use the **knowledge-gather** skill to find candidate
-   techniques, then **claim-extract** to turn them into structured claims via
-   `remember_claim`. Then **claim-verify** to check citations and codebase fit.
+   techniques (it prefers Paper Lantern's MCP tools if connected, else falls back
+   to `WebSearch`/`WebFetch`), then **claim-extract** to turn them into structured
+   claims via `remember_claim`. Then **claim-verify** to check citations and
+   codebase fit.
 
 4b. **Synthesize new ideas** (optional but high-value) → mine memory for novelty
    instead of only retrieving it: **contradiction-miner** (tensions →

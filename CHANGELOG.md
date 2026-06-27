@@ -20,6 +20,13 @@ Phase 4: global cross-project memory + a benchmark vs standard autoresearch.
 - Across scenarios, ours reaches the (synthesis-only) optimum 100% vs 0%, with
   ~3× the best improvement, zero repeats, and fewer dead-end retries.
 
+Knowledge ingestion:
+- `knowledge-gather` now states an explicit backend order: prefer Paper Lantern
+  MCP tools when connected, else fall back to the always-available `WebSearch` /
+  `WebFetch`. Paper Lantern is an optional upgrade, not a requirement.
+- README documents both as requirements and how to connect Paper Lantern's MCP
+  server to pi (no extension config needed — its tools surface to the agent).
+
 ## 0.3.0 — unreleased
 
 Phase 3: hypothesis synthesis — generate novel ideas, don't just retrieve them.

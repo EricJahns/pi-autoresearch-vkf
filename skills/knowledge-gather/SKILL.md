@@ -9,18 +9,31 @@ Your single job: **collect candidate techniques** relevant to the current goal.
 You are a librarian, not an inventor — do not propose novel combinations here, and
 do not run experiments. Find what others have done and bring back the receipts.
 
-## Where to look
+## Which search backend to use
 
-- **Paper Lantern** (if a Paper Lantern MCP server or tool is available) — prefer
-  it for paper search, overviews, and collections; it is built for exactly this.
+Decide once, at the start of gathering, in this order:
+
+1. **Paper Lantern, if its MCP tools are available.** Check the tools you've been
+   given for a Paper Lantern search/collection tool (names usually contain
+   `paper_lantern` / `paperlantern`). If present, **prefer it** — it's purpose-built
+   for paper search, high-level overviews, and curated collections, and tends to
+   surface better candidates than raw web search. Use its overview/collection
+   features to learn the area, then its search to pull specific papers.
+2. **Otherwise, fall back to `WebSearch` + `WebFetch`** (always available). This is
+   the default path and works fully on its own — Paper Lantern is an upgrade, not a
+   requirement. Use `WebSearch` to find papers/repos and `WebFetch` to read them
+   (prefer arXiv HTML/abstract pages and Semantic Scholar over PDFs when you can).
+
+State which backend you're using in your first message so the run is reproducible.
+
+## Where to look (whichever backend)
+
 - **arXiv / Semantic Scholar** — search by the *mechanism* of your problem, not
   just keywords. Keyword search finds the obvious; mechanism search finds
   surprising analogies (e.g. "methods that stabilize discrete nonlinear dynamical
   systems during gradient training", not "SNN training tricks").
 - **GitHub / docs / issues / benchmark reports / blog posts** — for
   implementation hints and whether a technique actually ships.
-
-Use `WebSearch`/`WebFetch` (and any available MCP search tools).
 
 ## What to collect
 
