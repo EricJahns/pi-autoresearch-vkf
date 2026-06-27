@@ -43,8 +43,7 @@ pi install file:/path/to/pi-autoresearch-vkf
 | Dependency | For | Required? |
 |---|---|---|
 | **`vkf` CLI** | Trust gating — validation, graph, freshness, permission checks | Recommended (memory still works without it; validation is skipped) |
-| **Web tools** (`WebSearch` / `WebFetch`) | Ingesting new knowledge from the literature | Recommended — the default ingestion path |
-| **Paper Lantern MCP** | Higher-quality paper search, overviews, collections | Optional upgrade |
+| **Web tools** (`WebSearch` / `WebFetch`) | Ingesting new knowledge from the literature | Recommended — the ingestion path |
 
 - **`vkf` CLI** — the extension finds it automatically inside a conda env named
   `VKF`, or set `$PI_AUTORESEARCH_VKF` to the `vkf` executable.
@@ -53,26 +52,19 @@ pi install file:/path/to/pi-autoresearch-vkf
 
 The extension stores and reasons over knowledge; it does **not** fetch papers
 itself. Gathering is done by the host agent through the `knowledge-gather` skill,
-which uses whatever search tools the agent has, in this order:
+using the agent's built-in **`WebSearch` + `WebFetch`** against free, openly
+accessible databases — no API keys, no paid services, no MCP setup:
 
-1. **Paper Lantern**, if its MCP server is connected to pi — preferred for paper
-   search, overviews, and collections.
-2. **`WebSearch` + `WebFetch`** otherwise — the default path. This works fully on
-   its own; **Paper Lantern is an optional upgrade, not a requirement.**
+- **arXiv** (`arxiv.org`, `export.arxiv.org/api`)
+- **Semantic Scholar** (`api.semanticscholar.org` Graph API)
+- **OpenAlex** (`api.openalex.org`)
+- **Crossref** (`api.crossref.org`)
+- GitHub / docs / benchmark reports / blogs for implementation hints
 
-In both cases the agent reads sources and calls `remember_claim` to persist each
-finding as a VKF card.
-
-**Connecting Paper Lantern (optional).** Add the Paper Lantern MCP server to your
-pi MCP configuration (see Paper Lantern's docs for its server command/endpoint and
-pi's docs for adding an MCP server). Once connected, its search tools appear to the
-agent automatically and `knowledge-gather` will prefer them — no extension config
-or env var needed. If it isn't connected, the skill silently falls back to
-`WebSearch`/`WebFetch`.
-
-If the host has **no** web tools and no Paper Lantern, you can still ingest by
-pasting papers / PDFs / findings for the agent to extract, or by seeding claims
-from the agent's own knowledge (marked low-reliability until verified).
+The agent reads sources and calls `remember_claim` to persist each finding as a
+VKF card. If the host has no web tools, you can still ingest by pasting papers /
+PDFs / findings for the agent to extract, or by seeding claims from the agent's
+own knowledge (marked low-reliability until verified).
 
 ## Usage
 
@@ -150,7 +142,7 @@ verifier — is the defense against **memory poisoning**.
 | Skill | Role |
 |-------|------|
 | `autoresearch-create` | Orchestrator / spine — the entry point. |
-| `knowledge-gather` | Find candidate techniques (Paper Lantern / arXiv / Semantic Scholar / GitHub). |
+| `knowledge-gather` | Find candidate techniques via WebSearch/WebFetch (arXiv / Semantic Scholar / OpenAlex / GitHub). |
 | `claim-extract` | Distill sources into reusable claim cards. |
 | `claim-verify` | Check citations & codebase fit — the trust layer. |
 | `contradiction-miner` | Turn tensions in memory into novel hypotheses. |
@@ -252,8 +244,9 @@ Possible next steps:
 - **Bundle profile 2** — attach reproduction `verification` blocks to experiment
   cards so memory validates at the strict `verified` profile.
 
-(Knowledge ingestion via `WebSearch`/`WebFetch` with Paper Lantern MCP as a
-preferred backend is built in — see [Knowledge sources](#knowledge-sources-how-ingestion-works).)
+(Knowledge ingestion via `WebSearch`/`WebFetch` against free databases (arXiv,
+Semantic Scholar, OpenAlex, Crossref) is built in — see
+[Knowledge sources](#knowledge-sources-how-ingestion-works).)
 
 ## License
 

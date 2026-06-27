@@ -9,31 +9,36 @@ Your single job: **collect candidate techniques** relevant to the current goal.
 You are a librarian, not an inventor — do not propose novel combinations here, and
 do not run experiments. Find what others have done and bring back the receipts.
 
-## Which search backend to use
+## How to search
 
-Decide once, at the start of gathering, in this order:
+Use `WebSearch` to find sources and `WebFetch` to read them. No API keys, no
+paid services, no extra setup — just the agent's built-in web tools against free,
+openly accessible databases.
 
-1. **Paper Lantern, if its MCP tools are available.** Check the tools you've been
-   given for a Paper Lantern search/collection tool (names usually contain
-   `paper_lantern` / `paperlantern`). If present, **prefer it** — it's purpose-built
-   for paper search, high-level overviews, and curated collections, and tends to
-   surface better candidates than raw web search. Use its overview/collection
-   features to learn the area, then its search to pull specific papers.
-2. **Otherwise, fall back to `WebSearch` + `WebFetch`** (always available). This is
-   the default path and works fully on its own — Paper Lantern is an upgrade, not a
-   requirement. Use `WebSearch` to find papers/repos and `WebFetch` to read them
-   (prefer arXiv HTML/abstract pages and Semantic Scholar over PDFs when you can).
+Search by the *mechanism* of your problem, not just keywords. Keyword search finds
+the obvious; mechanism search finds surprising analogies (e.g. "methods that
+stabilize discrete nonlinear dynamical systems during gradient training", not
+"SNN training tricks").
 
-State which backend you're using in your first message so the run is reproducible.
+## Free sources to draw on
 
-## Where to look (whichever backend)
+All of these are free and reachable with `WebFetch` (no key required):
 
-- **arXiv / Semantic Scholar** — search by the *mechanism* of your problem, not
-  just keywords. Keyword search finds the obvious; mechanism search finds
-  surprising analogies (e.g. "methods that stabilize discrete nonlinear dynamical
-  systems during gradient training", not "SNN training tricks").
+- **arXiv** — `arxiv.org` abstract/HTML pages, or the API at
+  `export.arxiv.org/api/query?search_query=...`. Prefer HTML/abstract pages over
+  PDFs; they parse far better.
+- **Semantic Scholar** — the free Graph API,
+  `api.semanticscholar.org/graph/v1/paper/search?query=...` (returns titles,
+  abstracts, years, citation counts — good for a reliability read).
+- **OpenAlex** — `api.openalex.org/works?search=...` (free, no key; great for
+  breadth and finding related work).
+- **Crossref** — `api.crossref.org/works?query=...` (resolve DOIs / metadata).
 - **GitHub / docs / issues / benchmark reports / blog posts** — for
   implementation hints and whether a technique actually ships.
+
+If the host has no web tools at all, fall back to sources the user provides
+(pasted papers, PDFs, URLs) or seed claims from your own knowledge — marked
+low-reliability until verified.
 
 ## What to collect
 

@@ -21,11 +21,10 @@ Phase 4: global cross-project memory + a benchmark vs standard autoresearch.
   ~3× the best improvement, zero repeats, and fewer dead-end retries.
 
 Knowledge ingestion:
-- `knowledge-gather` now states an explicit backend order: prefer Paper Lantern
-  MCP tools when connected, else fall back to the always-available `WebSearch` /
-  `WebFetch`. Paper Lantern is an optional upgrade, not a requirement.
-- README documents both as requirements and how to connect Paper Lantern's MCP
-  server to pi (no extension config needed — its tools surface to the agent).
+- `knowledge-gather` uses the agent's built-in `WebSearch` / `WebFetch` against
+  free, openly accessible databases — arXiv, Semantic Scholar, OpenAlex, Crossref
+  — with no API keys, paid services, or MCP setup.
+- README documents ingestion and the free sources used.
 
 ## 0.3.0 — unreleased
 
