@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0
+
+Tag ideas by *lever* and *altitude*, and surface a coverage map (the rut-detector).
+
+- `remember_claim` gains **`lever`** (which part of the system an idea touches:
+  data / objective / representation / algorithm / architecture / evaluation /
+  constraints) and **`altitude`** (how big the change is: hyperparameter <
+  component < mechanism < reframe). Both are domain-neutral, so they work for any
+  optimization target, not just ML.
+- Experiments inherit the tested claim's lever/altitude, so coverage reflects what
+  was actually run. Tags are persisted on the durable experiment card too.
+- The widget shows a **coverage line**: how runs spread across `lever·altitude`
+  buckets plus the levers never touched — e.g. `algorithm·hp ×11 · architecture·mech
+  ×1 | untouched: data, objective, constraints`. One glance shows when the loop is
+  stuck tweaking one corner.
+- Claim-extract / contradiction-miner / cross-domain-transfer skills now instruct
+  the agent to tag every claim.
+
+This is groundwork: a later release uses these tags for structural-novelty scoring
+and an explore/exploit experiment budget.
+
 ## 0.7.0
 
 Turn the live widget into a tabular experiment view and add a one-key browser open.

@@ -63,6 +63,44 @@ export const MEMORY_STATES: readonly MemoryState[] = [
   "retired",
 ];
 
+/**
+ * Which part of the system under study an idea touches. Deliberately
+ * domain-neutral so it works for any optimization target (model loss, test
+ * runtime, bundle size, …), not just ML.
+ */
+export type Lever =
+  | "data"
+  | "objective"
+  | "representation"
+  | "algorithm"
+  | "architecture"
+  | "evaluation"
+  | "constraints";
+
+export const LEVERS: readonly Lever[] = [
+  "data",
+  "objective",
+  "representation",
+  "algorithm",
+  "architecture",
+  "evaluation",
+  "constraints",
+];
+
+/**
+ * How big a change an idea is, low to high. `hyperparameter` tweaks a value;
+ * `component` swaps a module; `mechanism` changes *how* something works;
+ * `reframe` changes *what* is optimized or measured.
+ */
+export type Altitude = "hyperparameter" | "component" | "mechanism" | "reframe";
+
+export const ALTITUDES: readonly Altitude[] = [
+  "hyperparameter",
+  "component",
+  "mechanism",
+  "reframe",
+];
+
 /** How a card's content has been checked (the vision's verified_by_* axis). */
 export type Verification =
   | "reported_by_paper"
@@ -269,6 +307,10 @@ export interface ClaimInput {
   implementation_cost?: number;
   /** Where the idea came from: literature vs an agent-synthesized hypothesis. */
   origin?: "literature" | "contradiction" | "transfer" | "synthesis";
+  /** Which part of the system this idea touches (for coverage + novelty). */
+  lever?: Lever;
+  /** How big a change this idea is (for coverage + novelty). */
+  altitude?: Altitude;
   /** Ids of cards this idea was synthesized from (for contradiction/transfer). */
   derived_from?: string[];
   owner: string;
@@ -298,6 +340,8 @@ export function buildClaimCard(input: ClaimInput): { id: string; file: string; c
   if (input.info_gain !== undefined) meta["info_gain"] = input.info_gain;
   if (input.implementation_cost !== undefined) meta["implementation_cost"] = input.implementation_cost;
   meta["origin"] = input.origin ?? "literature";
+  if (input.lever) meta["lever"] = input.lever;
+  if (input.altitude) meta["altitude"] = input.altitude;
   if (input.derived_from && input.derived_from.length) meta["derived_from"] = input.derived_from;
 
   const evidence = input.paper_id
@@ -344,6 +388,9 @@ export interface ExperimentInput {
   conditions?: string;
   notes?: string;
   commit?: string;
+  /** Tags inherited from the tested claim (for coverage). */
+  lever?: Lever;
+  altitude?: Altitude;
   owner: string;
 }
 
@@ -374,6 +421,8 @@ export function buildExperimentCard(input: ExperimentInput): {
   meta["value"] = input.value;
   meta["outcome"] = input.outcome;
   if (input.commit) meta["commit"] = input.commit;
+  if (input.lever) meta["lever"] = input.lever;
+  if (input.altitude) meta["altitude"] = input.altitude;
   const delta =
     input.baseline !== undefined ? Number((input.value - input.baseline).toFixed(6)) : undefined;
   if (delta !== undefined) meta["delta"] = delta;
