@@ -42,6 +42,7 @@ Record the best candidate with `remember_claim`:
 - `derived_from: [<source_id>]`,
 - a `mechanism` explaining *why the mechanism should carry over* (the analogy must
   be mechanistic, not superficial),
+- `lever` and `altitude` of the transferred idea in *your* target system,
 - `context` = your target domain,
 - a starting `confidence` (transfers are speculative; start low–medium),
 - `failure_modes` — note where the analogy might break (the assumptions the source

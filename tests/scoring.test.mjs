@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  classifySlot,
   EVIDENCE_STRENGTH,
   jaccard,
   maxSimilarity,
   rankIdeas,
   scoreIdea,
+  selectBalanced,
   tokenize,
 } from "../extensions/pi-autoresearch-vkf/scoring.ts";
 
@@ -79,4 +81,71 @@ test("rankIdeas sorts by priority descending and applies overrides", () => {
   const ranked = rankIdeas(ideas);
   assert.equal(ranked[0].id, "claim:strong");
   assert.ok(ranked[0].priority > ranked[1].priority);
+});
+
+// ── structural novelty + altitude affinity + explore/exploit (steps 3-4) ──────
+
+test("structural novelty collapses for a saturated bucket, high for an empty one", () => {
+  const opts = {
+    exploredTotal: 10,
+    bucketCounts: { "algorithm|hyperparameter": 9 },
+  };
+  const saturated = scoreIdea(
+    { id: "a", title: "a", text: "fresh wording xyzzy", belief: 0.6, lever: "algorithm", altitude: "hyperparameter" },
+    opts,
+  );
+  const empty = scoreIdea(
+    { id: "b", title: "b", text: "fresh wording xyzzy", belief: 0.6, lever: "data", altitude: "mechanism" },
+    opts,
+  );
+  assert.ok(saturated.factors.structural_novelty < 0.2, "saturated bucket → low structural novelty");
+  assert.equal(empty.factors.structural_novelty, 1, "untouched bucket → full structural novelty");
+  // Lexically identical text, yet the saturated one ends up less novel overall.
+  assert.ok(empty.factors.novelty > saturated.factors.novelty);
+  assert.equal(saturated.bucket, "algorithm|hyperparameter");
+});
+
+test("altitudePreference 'tuning' restores hyperparameter parity", () => {
+  const tweak = { id: "a", title: "a", text: "same words here", belief: 0.6, altitude: "hyperparameter" };
+  const high = scoreIdea(tweak, { altitudePreference: "high" });
+  const tuning = scoreIdea(tweak, { altitudePreference: "tuning" });
+  assert.ok(tuning.factors.altitude_affinity > high.factors.altitude_affinity);
+  assert.equal(tuning.factors.altitude_affinity, 1);
+  assert.ok(tuning.priority > high.priority);
+});
+
+test("selectBalanced reserves explore slots and diversifies buckets", () => {
+  // belief 0.85 ⇒ low info-gain, so the saturated tweaks classify as exploit.
+  const mk = (id, lever, altitude, belief = 0.85) => ({
+    id, title: id, text: `${id} text`, belief, lever, altitude,
+  });
+  const ideas = [
+    mk("t1", "algorithm", "hyperparameter"),
+    mk("t2", "algorithm", "hyperparameter"),
+    mk("t3", "algorithm", "hyperparameter"),
+    mk("m1", "data", "mechanism"),
+    mk("r1", "objective", "reframe"),
+  ];
+  // The algorithm·hyperparameter bucket is already saturated from prior runs.
+  const opts = { exploredTotal: 10, bucketCounts: { "algorithm|hyperparameter": 10 } };
+  const ranked = rankIdeas(ideas, opts);
+  const scored = ranked.map((r) => ({ r, idea: ideas.find((i) => i.id === r.id) }));
+
+  const balanced = selectBalanced(scored, { exploreFraction: 0.5, k: 4 });
+  const explore = balanced.filter((p) => p.slot === "explore");
+  assert.ok(explore.length >= 2, "reserves explore slots for the high-altitude bets");
+  assert.ok(balanced.some((p) => p.r.id === "m1" || p.r.id === "r1"));
+
+  // exploreFraction 0 ⇒ no reserved explore slots (pure exploit when available).
+  const tuningPicks = selectBalanced(scored, { exploreFraction: 0, k: 3 });
+  assert.equal(tuningPicks.filter((p) => p.slot === "explore").length, 0);
+});
+
+test("classifySlot marks high-altitude as explore, saturated low-info tweaks as exploit", () => {
+  // Saturated bucket + confident belief ⇒ low structural novelty and low info-gain.
+  const opts = { exploredTotal: 10, bucketCounts: { "algorithm|hyperparameter": 10 } };
+  const reframeIdea = { id: "a", title: "a", text: "x", belief: 0.6, lever: "objective", altitude: "reframe" };
+  const tweakIdea = { id: "b", title: "b", text: "x", belief: 0.9, lever: "algorithm", altitude: "hyperparameter" };
+  assert.equal(classifySlot(scoreIdea(reframeIdea, opts), reframeIdea), "explore");
+  assert.equal(classifySlot(scoreIdea(tweakIdea, opts), tweakIdea), "exploit");
 });

@@ -22,12 +22,14 @@ import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-
 import { Type, type Static } from "typebox";
 
 import {
+  ALTITUDES,
   buildClaimCard,
   buildExperimentCard,
   buildPaperCard,
   confidenceLabel,
   findCard,
   isTrustedForHypotheses,
+  LEVERS,
   listCards,
   MEMORY_STATES,
   scaffoldMemoryBundle,
@@ -38,7 +40,7 @@ import {
   type MemoryState,
   type Verification,
 } from "./cards.ts";
-import { makeConfig, readConfig, writeConfig } from "./config.ts";
+import { makeConfig, readConfig, researchMode, writeConfig } from "./config.ts";
 import { buildFullscreenLines } from "./dashboard.ts";
 import {
   appendExperiment,
@@ -52,7 +54,7 @@ import {
 import { appendLog } from "./jsonl.ts";
 import { parseMetrics } from "./metrics.ts";
 import { renderProgressHtml, type ProgressExperiment } from "./progress_html.ts";
-import { rankIdeas, type IdeaInput } from "./scoring.ts";
+import { bucketKey, rankIdeas, selectBalanced, type IdeaInput } from "./scoring.ts";
 import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
 import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, memoryPaths, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
@@ -178,6 +180,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     info_gain: Type.Optional(Type.Number({ description: "Scoring input: how much a test would teach us, [0,1]. Defaults to belief uncertainty." })),
     implementation_cost: Type.Optional(Type.Number({ description: "Scoring input: relative cost to try, (0,1]. Default 0.4." })),
     origin: Type.Optional(Type.Union([Type.Literal("literature"), Type.Literal("contradiction"), Type.Literal("transfer"), Type.Literal("synthesis")], { description: "Where this idea came from. Use 'contradiction'/'transfer'/'synthesis' for agent-generated hypotheses (vs 'literature' for extracted claims). Default 'literature'." })),
+    lever: Type.Optional(Type.Union(LEVERS.map((l) => Type.Literal(l)), { description: "Which part of the system this idea touches: 'data' (inputs/fixtures), 'objective' (what's optimized / the metric definition), 'representation' (encoding/format), 'algorithm' (the core method/logic), 'architecture' (structure/composition), 'evaluation' (how it's measured), 'constraints' (budgets/limits treated as fixed). Used for coverage and structural novelty." })),
+    altitude: Type.Optional(Type.Union(ALTITUDES.map((a) => Type.Literal(a)), { description: "How big a change this is: 'hyperparameter' (tweak a value), 'component' (swap a module), 'mechanism' (change how it works), 'reframe' (change what's optimized/measured). Prefer tagging honestly — a reworded tweak is still 'hyperparameter'." })),
     derived_from: Type.Optional(Type.Array(Type.String(), { description: "Ids of existing cards this hypothesis was synthesized from (must already exist in memory)." })),
     paper: Type.Optional(PaperSub),
   });
@@ -235,6 +239,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         info_gain: params.info_gain,
         implementation_cost: params.implementation_cost,
         origin: params.origin,
+        lever: params.lever,
+        altitude: params.altitude,
         derived_from: params.derived_from?.filter((id) => findCard(root, id)),
         confidence: params.confidence,
         owner: config.owner,
@@ -450,17 +456,19 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     name: "score_ideas",
     label: "Score ideas",
     description:
-      "Rank untested ideas in memory by priority = expected_value × feasibility × evidence × novelty × info_gain ÷ cost. Novelty penalizes ideas close to what's already been tried or to the standard playbook. Use in the hypothesis loop to pick the next experiment deliberately, not at random. Returns the full factor breakdown so the ranking is auditable.",
+      "Rank untested ideas in memory by priority = EV × feasibility × evidence × novelty × info_gain × altitude_affinity ÷ cost, where novelty blends lexical distance with *structural* novelty (how under-explored the idea's lever·altitude bucket is). Also returns a budget-balanced shortlist that reserves explore slots for high-altitude bets. Use in the hypothesis loop to pick the next experiment deliberately. The factor breakdown keeps the ranking auditable.",
     parameters: ScoreParams,
     async execute(_id, params: Static<typeof ScoreParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ ranked: number; top?: string }>> {
       const root = resolveRoot(ctx);
       const sp = sessionPaths(root);
       requireSession(root);
+      const config = readConfig(sp.config)!;
       const limit = params.limit ?? 8;
       const includeCandidates = params.include_candidates ?? true;
 
       const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
       const str = (v: unknown): string => String(v ?? "");
+      const optStr = (v: unknown): string | undefined => (v == null ? undefined : String(v));
 
       const q = params.query?.toLowerCase().trim();
       const cardText = (c: ReturnType<typeof listCards>[number]): string =>
@@ -472,11 +480,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         includeCandidates ? ["candidate", "source_verified"] : ["source_verified"],
       );
 
-      // Explored ground: tried experiments + already-settled claims.
+      // Explored ground: tried experiments + already-settled claims. Experiment
+      // cards also give the lever·altitude bucket distribution for structural novelty.
+      const experimentCards = listCards(root, { type: "experiment" });
       const explored: string[] = [
-        ...listCards(root, { type: "experiment" }).map(cardText),
+        ...experimentCards.map(cardText),
         ...claims.filter((c) => exploredStates.has(c.meta["memory_state"] as MemoryState)).map(cardText),
       ];
+      const bucketCounts: Record<string, number> = {};
+      for (const e of experimentCards) {
+        const key = bucketKey(optStr(e.meta["lever"]), optStr(e.meta["altitude"]));
+        bucketCounts[key] = (bucketCounts[key] ?? 0) + 1;
+      }
 
       const ideas: IdeaInput[] = claims
         .filter((c) => untestedStates.has(c.meta["memory_state"] as MemoryState))
@@ -493,6 +508,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           feasibility: num(c.meta["feasibility"]),
           info_gain: num(c.meta["info_gain"]),
           implementation_cost: num(c.meta["implementation_cost"]),
+          lever: optStr(c.meta["lever"]),
+          altitude: optStr(c.meta["altitude"]),
         }));
 
       if (ideas.length === 0) {
@@ -502,28 +519,83 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         );
       }
 
-      const ranked = rankIdeas(ideas, { explored });
+      const mode = researchMode(config);
+      const ranked = rankIdeas(ideas, {
+        explored,
+        bucketCounts,
+        exploredTotal: experimentCards.length,
+        altitudePreference: mode.altitudePreference,
+      });
+      const ideaById = new Map(ideas.map((i) => [i.id, i]));
       const pct = (n: number): string => (n * 100).toFixed(0) + "%";
       const lines = ranked.slice(0, limit).map((r, i) => {
         const f = r.factors;
         return (
-          `${i + 1}. [${r.priority.toFixed(2)}] ${r.id} — ${r.title}\n` +
+          `${i + 1}. [${r.priority.toFixed(2)}] ${r.id} — ${r.title}  (${r.bucket})\n` +
           `     EV ${pct(f.expected_value)} · feas ${pct(f.feasibility)} · evidence ${pct(f.evidence_strength)} · ` +
-          `novelty ${pct(f.novelty)} · info-gain ${pct(f.info_gain)} · cost ${pct(f.implementation_cost)}` +
+          `novelty ${pct(f.novelty)} (struct ${pct(f.structural_novelty)}) · info-gain ${pct(f.info_gain)} · ` +
+          `altitude×${f.altitude_affinity.toFixed(2)} · cost ${pct(f.implementation_cost)}` +
           (r.max_similarity > 0.5 ? `  ⚠ ${pct(r.max_similarity)} similar to explored/playbook` : "")
         );
       });
 
+      // Budget-balanced shortlist: reserve explore slots so reliable tweaks can't
+      // crowd out high-altitude bets (skipped when exploreFraction is 0).
+      const k = Math.min(4, ranked.length);
+      const picks = selectBalanced(
+        ranked.map((r) => ({ r, idea: ideaById.get(r.id)! })),
+        { exploreFraction: mode.exploreFraction, k },
+      );
+      const shortlist = picks.map(
+        (p) => `  • [${p.slot}${p.slot === "explore" ? " ⟵ reserved" : ""}] ${p.r.id} — ${p.r.title}  (${p.r.bucket})`,
+      );
+
       appendLog(sp.log, { event: "note", note: "score_ideas", ranked: ranked.length, top: ranked[0]?.id });
       return textResult(
         [
-          `Ranked ${ranked.length} untested idea(s) by priority:`,
+          `Ranked ${ranked.length} untested idea(s) by priority` +
+            ` (mode: ${mode.altitudePreference}, explore ${pct(mode.exploreFraction)}):`,
           "",
           ...lines,
           "",
-          "Pick from the top, but weigh novelty: a slightly-lower-priority idea that explores new ground can beat a high-EV repeat.",
+          "Suggested next experiments (budget-balanced):",
+          ...shortlist,
+          "",
+          "Honor the explore quota across the run — a reserved explore pick that opens new ground beats another tweak to a saturated bucket.",
         ].join("\n"),
         { ranked: ranked.length, top: ranked[0]?.id },
+      );
+    },
+  });
+
+  // ── set_research_mode ─────────────────────────────────────────────────────────
+  const ModeParams = Type.Object({
+    explore_fraction: Type.Optional(Type.Number({ description: "Fraction of the experiment budget reserved for exploratory (high-altitude / high-uncertainty) ideas, [0,1]. 0 ⇒ pure priority order (tuning)." })),
+    altitude_preference: Type.Optional(Type.Union([Type.Literal("any"), Type.Literal("high"), Type.Literal("tuning")], { description: "Altitude bias: 'any' neutral, 'high' mildly favors mechanism/reframe ideas, 'tuning' favors hyperparameter tweaks." })),
+  });
+
+  pi.registerTool({
+    name: "set_research_mode",
+    label: "Set research mode",
+    description:
+      "Steer how the loop trades off exploration vs exploitation, mid-run. Set explore_fraction higher to spend more budget on novel high-altitude bets, or switch altitude_preference to 'tuning' when the user explicitly wants hyperparameter tuning. Affects score_ideas going forward.",
+    parameters: ModeParams,
+    async execute(_id, params: Static<typeof ModeParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ explore_fraction: number; altitude_preference: string }>> {
+      const root = resolveRoot(ctx);
+      const sp = sessionPaths(root);
+      requireSession(root);
+      const config = readConfig(sp.config)!;
+      const current = researchMode(config); // backfills legacy configs
+      config.exploreFraction =
+        params.explore_fraction !== undefined
+          ? Math.min(1, Math.max(0, params.explore_fraction))
+          : current.exploreFraction;
+      config.altitudePreference = params.altitude_preference ?? current.altitudePreference;
+      writeConfig(sp.config, config);
+      appendLog(sp.log, { event: "note", note: "set_research_mode", exploreFraction: config.exploreFraction, altitudePreference: config.altitudePreference });
+      return textResult(
+        `Research mode: altitude_preference=${config.altitudePreference}, explore_fraction=${(config.exploreFraction * 100).toFixed(0)}%.`,
+        { explore_fraction: config.exploreFraction, altitude_preference: config.altitudePreference },
       );
     },
   });
@@ -707,6 +779,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       if (metrics[config.metricName] === undefined) metrics[config.metricName] = params.value;
       const commit = shortCommit(params.commit, config.workingDir ?? root);
 
+      // Inherit lever/altitude from the tested claim so coverage reflects what we ran.
+      const testedClaim = params.claim_id ? findCard(root, params.claim_id) : undefined;
+      const lever = testedClaim?.meta["lever"] as string | undefined;
+      const altitude = testedClaim?.meta["altitude"] as string | undefined;
+
       const experiments = readExperiments(sp.experiments);
       const seq = String(experiments.length + 1).padStart(3, "0");
       const expEntry: Experiment = {
@@ -716,6 +793,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         value: params.value,
         metrics,
         commit,
+        lever,
+        altitude,
         baseline,
         outcome,
         kept: params.kept,
@@ -735,6 +814,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         conditions: params.conditions,
         notes: params.notes,
         commit: params.commit,
+        lever: lever as Parameters<typeof buildExperimentCard>[0]["lever"],
+        altitude: altitude as Parameters<typeof buildExperimentCard>[0]["altitude"],
         owner: config.owner,
       });
       writeCard(root, "verified", card.file, card.content);

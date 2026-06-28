@@ -9,6 +9,7 @@
  */
 import { readConfig } from "./config.ts";
 import {
+  LEVERS,
   listCards,
   MEMORY_STATES,
   type Card,
@@ -65,6 +66,46 @@ function memoryLine(root: string): string {
   const c = memoryCounts(root);
   const verified = c.source_verified + c.locally_tested + c.replicated;
   return `memory: ${c.candidate} candidate · ${verified} verified · ${c.contradicted} contradicted`;
+}
+
+const ALT_ABBR: Record<string, string> = {
+  hyperparameter: "hp",
+  component: "comp",
+  mechanism: "mech",
+  reframe: "reframe",
+};
+
+/**
+ * The rut-detector: how the experiments we've actually run spread across
+ * `lever·altitude` buckets, plus the levers never touched. One glance shows
+ * "11 tweaks to the algorithm, never touched the data or the objective".
+ * Returns `undefined` when nothing has been tagged yet.
+ */
+function coverageLine(root: string): string | undefined {
+  const experiments = readExperiments(sessionPaths(root).experiments);
+  const counts = new Map<string, number>();
+  const touchedLevers = new Set<string>();
+  let untagged = 0;
+  for (const e of experiments) {
+    if (!e.lever && !e.altitude) {
+      untagged += 1;
+      continue;
+    }
+    if (e.lever) touchedLevers.add(e.lever);
+    const key = `${e.lever ?? "?"}·${ALT_ABBR[e.altitude ?? ""] ?? e.altitude ?? "?"}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  if (counts.size === 0 && untagged === 0) return undefined;
+
+  const buckets = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([k, n]) => `${k} ×${n}`);
+  if (untagged > 0) buckets.push(`untagged ×${untagged}`);
+
+  const untouched = LEVERS.filter((l) => !touchedLevers.has(l));
+  const tail = untouched.length ? `   |   untouched: ${untouched.join(", ")}` : "";
+  return `coverage: ${buckets.join(" · ")}${tail}`;
 }
 
 /** keep / discard if decided, otherwise the raw outcome (win/loss/…). */
@@ -126,10 +167,12 @@ export function buildWidgetLines(root: string): string[] {
   const runsLine =
     `runs: ${s.total} · kept: ${s.kept} · discarded: ${s.discarded} · ` +
     `inconclusive: ${s.inconclusive} · best ${config.metricName}: ${best}`;
+  const coverage = coverageLine(root);
   const hint = shortcutHint();
   return [
     `pi-autoresearch-vkf · ${config.name}`,
     runsLine,
+    ...(coverage ? [coverage] : []),
     memoryLine(root),
     "",
     ...runsTable(root, config.metricName),

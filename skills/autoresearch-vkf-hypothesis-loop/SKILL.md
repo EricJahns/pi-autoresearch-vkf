@@ -18,14 +18,22 @@ ideas deliberately and you never repeat settled work.
 
 2. **Pick an idea — score, don't guess.** Call `score_ideas`. It ranks untested
    claims by
-   `priority = expected_value × feasibility × evidence × novelty × info_gain ÷ cost`,
-   where **novelty** penalizes ideas close to what's already been tried or to the
-   standard playbook (gradient clipping, cosine schedule, dropout, …). Read the
+   `priority = EV × feasibility × evidence × novelty × info_gain × altitude_affinity ÷ cost`,
+   where **novelty** blends lexical distance with *structural* novelty — how
+   under-explored the idea's `lever·altitude` bucket is. So a reworded tweak to a
+   bucket you've already hammered scores low even if its wording is fresh. Read the
    factor breakdown — it tells you *why* an idea ranks where it does. Prefer ideas
-   backed by `source_verified`+ claims. Don't blindly take rank #1: a
-   slightly-lower-priority idea that explores new ground can beat a high-EV
-   repeat. The `⚠ similar to explored/playbook` flag marks ideas you've
-   effectively already covered.
+   backed by `source_verified`+ claims. The `⚠ similar to explored/playbook` flag
+   marks ideas you've effectively already covered.
+
+   **Honor the budget-balanced shortlist.** `score_ideas` also returns a shortlist
+   that tags each pick `[exploit]` (a reliable incremental move) or
+   `[explore ⟵ reserved]` (a high-altitude / high-uncertainty bet given a reserved
+   slot). Across the run, actually spend the reserved explore slots — don't let
+   every iteration collapse onto exploit. The coverage line in the widget shows
+   when you're stuck in one corner. *Exception:* if the user asked for tuning, the
+   mode is already `tuning`/`explore 0%` and exploit picks are correct — or call
+   `set_research_mode` to steer it yourself.
 
 3. **Form a structured hypothesis** before touching code:
    - *mechanism* (why it should work), *intervention* (the smallest change),

@@ -132,7 +132,8 @@ verifier — is the defense against **memory poisoning**.
 | `remember_claim` | Stage a literature-derived candidate claim (+ its source paper). |
 | `verify_claim` | Advance/downgrade a card's trust lifecycle (audited). |
 | `recall_memory` | Query memory (project / global / both): trusted claims, candidates, prior experiments, negatives, conflicts. |
-| `score_ideas` | Rank untested ideas by `EV × feasibility × evidence × novelty × info_gain ÷ cost`. |
+| `score_ideas` | Rank untested ideas by `EV × feasibility × evidence × novelty × info_gain × altitude_affinity ÷ cost` (novelty includes *structural* novelty: how under-explored the idea's lever·altitude bucket is); returns a budget-balanced explore/exploit shortlist. |
+| `set_research_mode` | Steer the explore/exploit budget and altitude bias mid-run (e.g. switch to `tuning` when the user explicitly wants a sweep). |
 | `find_contradictions` | Mine memory for tensions between claims — each a seed for a novel hypothesis. |
 | `find_transfers` | Cross-domain mechanism search: same *how*, different *where*. |
 | `vkf_run_experiment` | Run the measurement command; capture `METRIC name=value`. |

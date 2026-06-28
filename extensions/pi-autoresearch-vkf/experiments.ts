@@ -29,6 +29,10 @@ export interface Experiment {
   metrics?: Record<string, number>;
   /** Short (7-char) commit hash capturing the change, if known. */
   commit?: string;
+  /** System part this experiment touched, inherited from the tested claim. */
+  lever?: string;
+  /** Size of the change, inherited from the tested claim. */
+  altitude?: string;
   /** Baseline this run was compared against. */
   baseline?: number;
   /** Outcome relative to the baseline and metric direction. */
