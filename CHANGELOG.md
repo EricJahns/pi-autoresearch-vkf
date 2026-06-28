@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.10
+
+- **No repeated small-knob fine-tuning.** Generalizes the 0.8.9 "train longer"
+  guard to all low-altitude hyperparameter tweaks (LR-schedule shape, warmup,
+  batch size, weight decay, dropout, …). They may be tried once but must never
+  become the loop's default move, and the same knob isn't tuned again unless it's
+  demonstrably the limiting factor — the last adjustment gave a significant gain
+  and the metric is still clearly improving, not stagnating. Once returns flatten,
+  the loop abandons the knob and goes higher-altitude.
+
 ## 0.8.9
 
 Bias the loop toward research over reflexive tweaking.

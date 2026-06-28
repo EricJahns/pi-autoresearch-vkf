@@ -72,13 +72,24 @@ ideas deliberately and you never repeat settled work.
 
 ## Guardrails
 
-- **Don't just "train longer."** Increasing epochs / training steps / wall-clock
-  is not a mechanism — it buys metric with compute and teaches you nothing about
-  the problem. Do **not** propose it unless the user explicitly asked to tune the
-  training budget, **or** there's direct evidence of under-training (e.g. the loss
-  curve is still clearly descending at the end of the run). The same caution
-  applies to other pure-budget knobs (more data passes, bigger model just to brute
-  the metric). Prefer a hypothesis that changes *how* the method works.
+- **Don't repeatedly fine-tune small knobs.** Low-altitude hyperparameter tweaks —
+  LR-schedule shape, warmup length, batch size, weight decay, dropout rate, and the
+  like — are fine to *try once*, but they must **never become the loop's default
+  move**, and the same knob must not be tuned again and again. Revisit a knob only
+  when there's an extremely strong reason to believe it's the current *limiting
+  factor* — concretely, the last adjustment to that lever produced a **significant**
+  metric gain and the metric is **still clearly improving, not stagnating**. The
+  moment returns flatten, abandon that lever and go higher-altitude (change *how*
+  the method works) instead of squeezing the same knob. The widget's coverage line
+  is your tell: if one `lever·altitude` bucket keeps growing, stop feeding it.
+- **Don't just "train longer."** Increasing epochs / training steps / wall-clock is
+  the limiting case of the rule above: it's not a mechanism — it buys metric with
+  compute and teaches you nothing. Do **not** propose it unless the user explicitly
+  asked to tune the training budget, **or** there's direct evidence of
+  under-training (e.g. the loss curve is still clearly descending at the end of the
+  run). The same caution applies to other pure-budget knobs (more data passes,
+  bigger model just to brute the metric). Prefer a hypothesis that changes *how* the
+  method works.
 - **No metric gaming.** If a "win" came from changing the measurement or leaving
   the method behind, log it as `inconclusive` with a note — don't bank a fake win.
 - **Respect the budget** (`max_iterations`, compute/time). Stop and report when
