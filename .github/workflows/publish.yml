@@ -24,6 +24,13 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm run typecheck
-      - run: npm publish --provenance --access public
+      - name: Publish if this version is new
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "pi-autoresearch-vkf@${VERSION}" version >/dev/null 2>&1; then
+            echo "pi-autoresearch-vkf@${VERSION} is already on npm — skipping publish."
+          else
+            npm publish --provenance --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
