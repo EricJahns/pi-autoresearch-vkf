@@ -14,7 +14,7 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 
 ## Tools (provided by the pi-autoresearch-vkf extension)
 
-- `init_research` — scaffold the `.auto/` session and `.research-memory/` VKF bundle (once).
+- `init_research` — scaffold the `.autoresearch-vkf/` workspace (session + memory VKF bundle) (once).
 - `remember_claim` — stage a literature-derived candidate claim (+ its source paper).
 - `verify_claim` — advance/downgrade a card's trust lifecycle (audited).
 - `recall_memory` — query memory for trusted claims, candidates, prior experiments, negatives, conflicts.
@@ -29,8 +29,8 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 
 | Layer | Where | Lifetime |
 |-------|-------|----------|
-| Session | `.auto/` | this run — goal, experiment log, measure script |
-| Memory | `.research-memory/` | **persists across runs** — a VKF bundle of papers, claims, experiments |
+| Session | `.autoresearch-vkf/session/` | this run — goal, experiment log, measure script |
+| Memory | `.autoresearch-vkf/memory/` | **persists across runs** — a VKF bundle of papers, claims, experiments |
 
 Memory has a trust lifecycle. Cards move `candidate → source_verified →
 locally_tested/replicated`, or `contradicted → deprecated → retired`. Only
@@ -42,7 +42,7 @@ transaction record — promotion is an explicit, audited step.
 
 1. **Confirm inputs.** Ask for and confirm:
    - the **goal** (what to improve) and the **metric** + which **direction** is better;
-   - the **command** that prints `METRIC <name>=<number>` (edit `.auto/measure.sh`);
+   - the **command** that prints `METRIC <name>=<number>` (edit `.autoresearch-vkf/session/measure.sh`);
    - the **files in scope** and any compute/time budget.
 
 2. **Init.** Call `init_research` with those. This also creates the memory bundle.
@@ -70,5 +70,5 @@ transaction record — promotion is an explicit, audited step.
 6. **Report** → use the **research-report** skill to produce the lineage report
    (paper → claim → hypothesis → patch → metric Δ → status → memory update).
 
-Keep `.auto/prompt.md` current so a fresh agent can continue. The loop is
-resumable: on restart, read `.auto/` and `recall_memory`, then continue.
+Keep `.autoresearch-vkf/session/prompt.md` current so a fresh agent can continue. The loop is
+resumable: on restart, read `.autoresearch-vkf/session/` and `recall_memory`, then continue.

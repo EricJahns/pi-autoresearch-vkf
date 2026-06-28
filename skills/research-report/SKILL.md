@@ -1,6 +1,6 @@
 ---
 name: research-report
-description: Produce the autoresearch report with full idea lineage — paper → claim → hypothesis → patch → metric change → status → memory update. Use to summarize an autoresearch run into an auditable, human-readable report at .auto/report.md.
+description: Produce the autoresearch report with full idea lineage — paper → claim → hypothesis → patch → metric change → status → memory update. Use to summarize an autoresearch run into an auditable, human-readable report at .autoresearch-vkf/session/report.md.
 ---
 
 # Research report
@@ -16,10 +16,10 @@ learned. Make that lineage explicit.
   report.
 - `research_status` for the session experiments and memory lifecycle counts.
 - `recall_memory` for the trusted claims, candidates, and negatives.
-- The memory bundle itself (`.research-memory/`): paper, claim, and experiment
+- The memory bundle itself (`.autoresearch-vkf/memory/`): paper, claim, and experiment
   cards, and the `transactions/` audit trail.
 
-## Write `.auto/report.md`
+## Write `.autoresearch-vkf/session/report.md`
 
 Include:
 

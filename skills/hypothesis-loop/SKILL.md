@@ -43,7 +43,7 @@ ideas deliberately and you never repeat settled work.
      repeated `loss` → `contradicted`).
    Keep wins, revert regressions — either way it's now remembered.
 
-6. **Update `.auto/prompt.md`** with the takeaway and repeat.
+6. **Update `.autoresearch-vkf/session/prompt.md`** with the takeaway and repeat.
 
 ## Guardrails
 

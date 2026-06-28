@@ -1,6 +1,6 @@
 /**
- * Per-session runtime state. Research state itself lives on disk under `.auto/`
- * and `.research-memory/`; this store only holds ephemeral UI bookkeeping so we
+ * Per-session runtime state. Research state itself lives on disk under `.autoresearch-vkf/session/`
+ * and `.autoresearch-vkf/memory/`; this store only holds ephemeral UI bookkeeping so we
  * avoid redundant widget updates.
  */
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -32,7 +32,7 @@ function createRuntimeStore() {
 export const runtimeStore = createRuntimeStore();
 
 /**
- * Resolve the project root used for `.auto/` and `.research-memory/`. Honors
+ * Resolve the project root used for `.autoresearch-vkf/session/` and `.autoresearch-vkf/memory/`. Honors
  * `workingDir` from the session config when present, otherwise falls back to cwd.
  */
 export function resolveRoot(ctx: ExtensionContext): string {

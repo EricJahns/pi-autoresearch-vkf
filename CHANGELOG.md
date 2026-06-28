@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 — unreleased
+
+Self-contained workspace (breaking path change).
+
+- All package state now lives under a single namespaced directory,
+  `.autoresearch-vkf/`, with `session/` (ephemeral run state, was `.auto/`) and
+  `memory/` (the VKF bundle, was `.research-memory/`). This stops the session dir
+  from colliding with pi-autoresearch's `.auto/` and makes the package's
+  footprint obvious and self-contained.
+- Global memory moves to `~/.autoresearch-vkf/memory/`;
+  `PI_AUTORESEARCH_GLOBAL_ROOT` now names the *root* (default `~`).
+- Internal: hardcoded `${root}/.research-memory` paths replaced with
+  `memoryPaths(root)`; `paths.ts` exposes `pkgDir` and the session/memory
+  subdir layout. Existing bundles can be migrated by moving `.auto` →
+  `.autoresearch-vkf/session` and `.research-memory` → `.autoresearch-vkf/memory`.
+
 ## 0.4.0 — unreleased
 
 Phase 4: global cross-project memory + a benchmark vs standard autoresearch.

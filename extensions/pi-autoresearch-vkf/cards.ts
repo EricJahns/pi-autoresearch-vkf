@@ -2,7 +2,7 @@
  * The research-memory model: VKF cards and their lifecycle.
  *
  * Durable knowledge is stored as VKF objects (markdown + YAML frontmatter) under
- * `.research-memory/`. Each card is one reusable "research atom": a paper, a
+ * `.autoresearch-vkf/memory/`. Each card is one reusable "research atom": a paper, a
  * claim extracted from it, a concept/mechanism, or an experiment result.
  *
  * The vision's memory states (candidate → source_verified → locally_tested →
@@ -123,7 +123,7 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 // ── bundle scaffolding ─────────────────────────────────────────────────────────
 
 /**
- * Create the `.research-memory/` VKF bundle if absent: the lifecycle directories
+ * Create the `.autoresearch-vkf/memory/` VKF bundle if absent: the lifecycle directories
  * and the `vkf.bundle.yaml` manifest. Idempotent. Returns true if it created the
  * manifest (i.e. this was a fresh bundle).
  */

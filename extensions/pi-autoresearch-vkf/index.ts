@@ -4,11 +4,11 @@
  * This extension is the machinery; the domain knowledge (how to search the
  * literature, extract claims, pick the next experiment) lives in the skills.
  *
- * Two persistence layers (see ./paths.ts):
- *   .auto/             the per-run session (goal, experiment log)
- *   .research-memory/  a durable VKF bundle the loop reads from and writes to,
- *                      so future runs build on verified knowledge instead of
- *                      rediscovering it.
+ * One self-contained workspace, two layers (see ./paths.ts):
+ *   .autoresearch-vkf/session/   the per-run session (goal, experiment log)
+ *   .autoresearch-vkf/memory/    a durable VKF bundle the loop reads from and
+ *                                writes to, so future runs build on verified
+ *                                knowledge instead of rediscovering it.
  *
  * The seven tools below implement the loop's spine: init → remember (literature)
  * → verify → recall → run → log (write-back). Everything an agent proposes lands
@@ -53,7 +53,7 @@ import { parseMetrics } from "./metrics.ts";
 import { renderProgressHtml, type ProgressExperiment } from "./progress_html.ts";
 import { rankIdeas, type IdeaInput } from "./scoring.ts";
 import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
-import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, sessionPaths } from "./paths.ts";
+import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, memoryPaths, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
 import { resolveRoot, runtimeStore, sessionKey } from "./runtime.ts";
 import { loadShortcuts } from "./shortcuts.ts";
@@ -74,7 +74,7 @@ function requireSession(root: string): void {
 
 /** Summarize a post-write validation, for inclusion in tool output. */
 function validationNote(root: string, profile: number): string {
-  const memoryDir = `${root}/.research-memory`;
+  const memoryDir = memoryPaths(root).dir;
   const report = vkf.validate(memoryDir, profile);
   if (!report.available) {
     return "ℹ vkf CLI not found — memory written, but trust validation was skipped. Set $PI_AUTORESEARCH_VKF or install the VKF env to enable it.";
@@ -103,7 +103,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     name: "init_research",
     label: "Init research",
     description:
-      "Scaffold a .auto/ session and a .research-memory/ VKF bundle for an autoresearch loop. Idempotent: an existing session is reported, not overwritten. Call once at the start.",
+      "Scaffold a .autoresearch-vkf/ workspace (session/ + memory/ VKF bundle) for an autoresearch loop. Idempotent: an existing session is reported, not overwritten. Call once at the start.",
     parameters: InitParams,
     async execute(_id, params: Static<typeof InitParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ created: boolean }>> {
       const root = params.working_dir ?? ctx.cwd;
@@ -112,7 +112,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       if (existing) {
         refreshWidget(ctx, root);
         return textResult(
-          `A research session already exists: "${existing.name}".\nSession: ${sp.dir}\nMemory:  ${root}/.research-memory\nContinue the loop with recall_memory → run_experiment → log_experiment.`,
+          `A research session already exists: "${existing.name}".\nSession: ${sp.dir}\nMemory:  ${memoryPaths(root).dir}\nContinue the loop with recall_memory → run_experiment → log_experiment.`,
           { created: false },
         );
       }
@@ -141,7 +141,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         [
           `Initialized research session "${config.name}".`,
           `Session dir: ${sp.dir}`,
-          `Memory bundle: ${root}/.research-memory ${fresh ? "(new)" : "(existing)"} — profile ${config.memoryProfile}.`,
+          `Memory bundle: ${memoryPaths(root).dir} ${fresh ? "(new)" : "(existing)"} — profile ${config.memoryProfile}.`,
           `Optimizing ${config.metricName} (${config.direction} is better).`,
           "",
           "Next: gather literature (knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → run_experiment → log_experiment.",
@@ -182,7 +182,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     name: "remember_claim",
     label: "Remember claim",
     description:
-      "Record a literature-derived research atom as a VKF *candidate* claim (status draft) in .research-memory/staging/, with a transaction record. If a `paper` is given, its PaperCard is created too so the claim's source resolves. This is collect-and-stage — verify_claim promotes it; nothing is trusted yet.",
+      "Record a literature-derived research atom as a VKF *candidate* claim (status draft) in the memory bundle's staging/ area, with a transaction record. If a `paper` is given, its PaperCard is created too so the claim's source resolves. This is collect-and-stage — verify_claim promotes it; nothing is trusted yet.",
     parameters: RememberParams,
     async execute(_id, params: Static<typeof RememberParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ claim_id: string; paper_id?: string }>> {
       const root = resolveRoot(ctx);
@@ -414,7 +414,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       }
 
       // Freshness signal from the real CLI, when available.
-      const fresh = vkf.freshness(`${root}/.research-memory`);
+      const fresh = vkf.freshness(memoryPaths(root).dir);
       if (fresh.available && fresh.report && typeof fresh.report === "object") {
         const stale = (fresh.report as { stale?: unknown[] }).stale;
         if (Array.isArray(stale) && stale.length) {
@@ -837,7 +837,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
       const gv = validationNote(gRoot, config.memoryProfile);
       return textResult(
-        [`Promoted ${params.id} (${state}) to global memory at ${gRoot}/.research-memory.`, gv].join("\n"),
+        [`Promoted ${params.id} (${state}) to global memory at ${memoryPaths(gRoot).dir}.`, gv].join("\n"),
         { promoted: true },
       );
     },
@@ -899,7 +899,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       writeFileSync(sp.progressHtml, progressHtml, "utf8");
 
       // Lineage graph via the vkf CLI (best-effort).
-      const lineage = vkf.html(`${root}/.research-memory`, sp.dashboardHtml, `Research memory — ${config.name}`);
+      const lineage = vkf.html(memoryPaths(root).dir, sp.dashboardHtml, `Research memory — ${config.name}`);
       const lineageLine = lineage.available
         ? lineage.ok
           ? `Lineage graph: ${sp.dashboardHtml}`

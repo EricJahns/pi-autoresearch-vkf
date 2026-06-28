@@ -1,7 +1,7 @@
 /**
  * Renders research status as plain text lines for the live widget (above the
- * editor) and the fullscreen overlay. Dependency-light: it reads `.auto/` and
- * `.research-memory/` from disk and returns `string[]`, so it works regardless
+ * editor) and the fullscreen overlay. Dependency-light: it reads `.autoresearch-vkf/session/` and
+ * `.autoresearch-vkf/memory/` from disk and returns `string[]`, so it works regardless
  * of theme support.
  *
  * The two halves mirror the architecture: the *session* (what this run has
