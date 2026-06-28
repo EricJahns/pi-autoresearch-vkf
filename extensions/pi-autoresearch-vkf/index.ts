@@ -22,12 +22,14 @@ import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-
 import { Type, type Static } from "typebox";
 
 import {
+  ALTITUDES,
   buildClaimCard,
   buildExperimentCard,
   buildPaperCard,
   confidenceLabel,
   findCard,
   isTrustedForHypotheses,
+  LEVERS,
   listCards,
   MEMORY_STATES,
   scaffoldMemoryBundle,
@@ -178,6 +180,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     info_gain: Type.Optional(Type.Number({ description: "Scoring input: how much a test would teach us, [0,1]. Defaults to belief uncertainty." })),
     implementation_cost: Type.Optional(Type.Number({ description: "Scoring input: relative cost to try, (0,1]. Default 0.4." })),
     origin: Type.Optional(Type.Union([Type.Literal("literature"), Type.Literal("contradiction"), Type.Literal("transfer"), Type.Literal("synthesis")], { description: "Where this idea came from. Use 'contradiction'/'transfer'/'synthesis' for agent-generated hypotheses (vs 'literature' for extracted claims). Default 'literature'." })),
+    lever: Type.Optional(Type.Union(LEVERS.map((l) => Type.Literal(l)), { description: "Which part of the system this idea touches: 'data' (inputs/fixtures), 'objective' (what's optimized / the metric definition), 'representation' (encoding/format), 'algorithm' (the core method/logic), 'architecture' (structure/composition), 'evaluation' (how it's measured), 'constraints' (budgets/limits treated as fixed). Used for coverage and structural novelty." })),
+    altitude: Type.Optional(Type.Union(ALTITUDES.map((a) => Type.Literal(a)), { description: "How big a change this is: 'hyperparameter' (tweak a value), 'component' (swap a module), 'mechanism' (change how it works), 'reframe' (change what's optimized/measured). Prefer tagging honestly — a reworded tweak is still 'hyperparameter'." })),
     derived_from: Type.Optional(Type.Array(Type.String(), { description: "Ids of existing cards this hypothesis was synthesized from (must already exist in memory)." })),
     paper: Type.Optional(PaperSub),
   });
@@ -235,6 +239,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         info_gain: params.info_gain,
         implementation_cost: params.implementation_cost,
         origin: params.origin,
+        lever: params.lever,
+        altitude: params.altitude,
         derived_from: params.derived_from?.filter((id) => findCard(root, id)),
         confidence: params.confidence,
         owner: config.owner,
@@ -707,6 +713,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       if (metrics[config.metricName] === undefined) metrics[config.metricName] = params.value;
       const commit = shortCommit(params.commit, config.workingDir ?? root);
 
+      // Inherit lever/altitude from the tested claim so coverage reflects what we ran.
+      const testedClaim = params.claim_id ? findCard(root, params.claim_id) : undefined;
+      const lever = testedClaim?.meta["lever"] as string | undefined;
+      const altitude = testedClaim?.meta["altitude"] as string | undefined;
+
       const experiments = readExperiments(sp.experiments);
       const seq = String(experiments.length + 1).padStart(3, "0");
       const expEntry: Experiment = {
@@ -716,6 +727,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         value: params.value,
         metrics,
         commit,
+        lever,
+        altitude,
         baseline,
         outcome,
         kept: params.kept,
@@ -735,6 +748,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         conditions: params.conditions,
         notes: params.notes,
         commit: params.commit,
+        lever: lever as Parameters<typeof buildExperimentCard>[0]["lever"],
+        altitude: altitude as Parameters<typeof buildExperimentCard>[0]["altitude"],
         owner: config.owner,
       });
       writeCard(root, "verified", card.file, card.content);

@@ -42,6 +42,8 @@ Record it with `remember_claim`, setting:
 - `origin: "contradiction"`,
 - `derived_from: [<id_a>, <id_b>]` (the two cards in tension),
 - a `mechanism` (required — a hypothesis with no mechanism is just noise),
+- `lever` and `altitude` (resolving a tension usually lands at `mechanism` or
+  `reframe` altitude — that's the point; tag it so the coverage map credits it),
 - an honest `confidence` (these are speculative; start low–medium).
 
 It enters memory as a **candidate** like any other idea — then `autoresearch-vkf-claim-verify` and

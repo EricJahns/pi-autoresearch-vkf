@@ -26,6 +26,12 @@ Call `remember_claim` with:
 - **confidence** — your initial belief in [0,1] that it helps *our* goal.
 - **recency_score** / **reliability_score** — keep these separate; a recent paper
   can be high-recency, low-reliability.
+- **lever** / **altitude** — always tag these. *lever* = which part of the system
+  the idea touches (data / objective / representation / algorithm / architecture /
+  evaluation / constraints); *altitude* = how big the change is (hyperparameter <
+  component < mechanism < reframe). They drive the coverage map and structural
+  novelty, so the loop can see when it's stuck tweaking one corner. Tag honestly —
+  a reworded value tweak is still `hyperparameter`.
 - **paper** — the source `{ title, source_url, authors?, year?, summary? }`. Pass
   this so the source PaperCard is created and the claim's provenance resolves.
 
