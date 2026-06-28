@@ -62,10 +62,16 @@ transaction record — promotion is an explicit, audited step.
    When many ideas compete for budget, run the **autoresearch-vkf-idea-tournament** skill to pick
    the 2–3 worth testing.
 
-5. **Loop** → use the **autoresearch-vkf-hypothesis-loop** skill: `recall_memory` → pick the
-   highest-value, sufficiently-novel idea → implement the smallest falsifying
-   change → `vkf_run_experiment` → `vkf_log_experiment` → repeat. Keep wins, revert
-   regressions; either way the result is now in memory.
+5. **Loop** → use the **autoresearch-vkf-hypothesis-loop** skill: `recall_memory` →
+   **refresh research** → pick the highest-value, sufficiently-novel idea →
+   implement the smallest falsifying change → `vkf_run_experiment` →
+   `vkf_log_experiment` → repeat. Keep wins, revert regressions; either way the
+   result is now in memory. Gathering literature isn't a one-shot up-front step:
+   each result re-opens questions, so keep returning to the literature and the
+   synthesis skills (step 4b) between experiments rather than grinding the same
+   ideas. Reading more between goes is the point — and don't fall back on "train
+   longer" / more epochs to move the metric unless the user asked for it or the
+   model is visibly under-trained.
 
 6. **Report** → use the **autoresearch-vkf-research-report** skill to produce the lineage report
    (paper → claim → hypothesis → patch → metric Δ → status → memory update).

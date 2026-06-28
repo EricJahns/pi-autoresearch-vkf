@@ -49,6 +49,12 @@ export const DEFAULT_PLAYBOOK: readonly string[] = [
   "data augmentation",
   "early stopping",
   "layer normalization",
+  // "Just train longer" — the cheapest, least-novel lever. It buys metric at the
+  // cost of compute without teaching us anything about the problem, so it's
+  // penalized by default. The hypothesis-loop skill blocks it outright unless the
+  // user explicitly asks or there's evidence of under-training.
+  "increase epochs train longer",
+  "more training steps iterations",
 ];
 
 const STOPWORDS = new Set([

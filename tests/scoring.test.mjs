@@ -61,6 +61,13 @@ test("playbook ideas are penalized on novelty by default", () => {
   assert.ok(novelIdea.factors.novelty > playbookIdea.factors.novelty);
 });
 
+test('"just train longer" is treated as a playbook move', () => {
+  const epochs = scoreIdea({ id: "claim:e", title: "e", text: "increase epochs and train longer", belief: 0.6 });
+  const mechanism = scoreIdea({ id: "claim:m", title: "m", text: "spike-rate ema surrogate slope controller", belief: 0.6 });
+  assert.ok(mechanism.factors.novelty > epochs.factors.novelty, "epochs idea should score lower novelty");
+  assert.ok(epochs.max_similarity > 0.5, "epochs idea should match the playbook");
+});
+
 test("info_gain peaks at uncertain belief", () => {
   const uncertain = scoreIdea({ id: "a", title: "a", text: "novel quux frobnicator", belief: 0.5 });
   const certain = scoreIdea({ id: "b", title: "b", text: "novel quux frobnicator", belief: 0.95 });

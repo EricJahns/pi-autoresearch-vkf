@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.9
+
+Bias the loop toward research over reflexive tweaking.
+
+- **More research between experiments.** The hypothesis loop now treats literature
+  gathering and synthesis (contradiction-mining, cross-domain transfer) as a
+  recurring step, not a one-shot up-front phase — especially after a loss, a
+  surprise, or when the remaining ideas are all incremental. The agent should read
+  more between goes and pick from a richer, better-grounded idea set.
+- **"Just train longer" is no longer a go-to.** Increasing epochs / training steps
+  is penalized as a standard-playbook move and the hypothesis-loop skill blocks it
+  unless the user explicitly asks to tune the training budget, or there's direct
+  evidence of under-training. Same caution for other pure-budget knobs.
+
 ## 0.8.8
 
 - **Fix: fullscreen overlay (alt+g) crash on narrow terminals.** The overlay
