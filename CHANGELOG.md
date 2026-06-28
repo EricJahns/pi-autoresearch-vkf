@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.11
+
+- **Fix: alt+g dashboard now updates live.** The fullscreen overlay rendered once
+  and never refreshed, so it went stale while the agent kept working. It now
+  re-reads the session on a 1s timer and asks the TUI to redraw, so experiments,
+  metrics, and memory state track agent progress while the overlay is open (the
+  timer is cleared when you close it).
+
 ## 0.8.10
 
 - **No repeated small-knob fine-tuning.** Generalizes the 0.8.9 "train longer"

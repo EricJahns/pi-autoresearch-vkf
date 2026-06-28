@@ -1084,17 +1084,26 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       handler: async (ctx) => {
         if (!ctx.hasUI) return;
         const root = resolveRoot(ctx);
-        await ctx.ui.custom<void>((_tui, _theme, _kb, done) => {
+        await ctx.ui.custom<void>((tui, _theme, _kb, done) => {
           let lines = buildFullscreenLines(root);
+          const refresh = (): void => {
+            lines = buildFullscreenLines(root);
+          };
+          // Re-read the session from disk on a timer and ask the TUI to redraw, so
+          // the overlay tracks agent progress live while it's open (tool calls
+          // write the session files between renders). Cleared on close.
+          const timer = setInterval(() => {
+            refresh();
+            tui.requestRender();
+          }, 1000);
           return {
             // Truncate to the viewport width — pi crashes the render if any line
             // overflows. truncateToWidth is ANSI-aware, so our color codes are
             // measured/clipped correctly.
             render: (width: number) => lines.map((l) => truncateToWidth(l, width)),
-            invalidate: () => {
-              lines = buildFullscreenLines(root);
-            },
+            invalidate: refresh,
             handleInput: () => done(),
+            dispose: () => clearInterval(timer),
           };
         });
       },
