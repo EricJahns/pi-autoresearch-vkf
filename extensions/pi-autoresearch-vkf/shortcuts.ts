@@ -1,9 +1,12 @@
 /**
  * Keyboard shortcut configuration.
  *
- * The fullscreen research dashboard shortcut defaults to ctrl+g ("graph of
+ * The fullscreen research dashboard shortcut defaults to alt+g ("graph of
  * knowledge") and can be overridden with the PI_AUTORESEARCH_SHORTCUT environment
  * variable, or disabled entirely by setting it to an empty string or "none".
+ *
+ * Defaults use alt+ combos because pi reserves nearly every ctrl+<letter>
+ * (e.g. ctrl+g and ctrl+o are taken); alt+g / alt+o are free.
  */
 import type { KeyId } from "@earendil-works/pi-tui";
 
@@ -14,8 +17,8 @@ export interface ShortcutConfig {
   openBrowser?: KeyId;
 }
 
-const DEFAULT_FULLSCREEN: KeyId = "ctrl+g";
-const DEFAULT_OPEN_BROWSER: KeyId = "ctrl+o";
+const DEFAULT_FULLSCREEN: KeyId = "alt+g";
+const DEFAULT_OPEN_BROWSER: KeyId = "alt+o";
 
 function resolve(envVar: string, fallback: KeyId): KeyId | undefined {
   const override = process.env[envVar]?.trim();

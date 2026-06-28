@@ -187,9 +187,9 @@ Three live views, in increasing detail:
 - **Widget** (always on, above the editor) — run/kept/discarded counts, best
   metric, memory tally, and a table of the recent runs (commit · every metric ·
   status · change); refreshes after every tool call.
-- **Fullscreen overlay** — press **Ctrl+G** (or call `research_status`) for the
+- **Fullscreen overlay** — press **Alt+G** (or call `research_status`) for the
   full experiment list, memory lifecycle, and verified claims.
-- **Browser dashboards** — press **Ctrl+O** (or run `/research-open`). `export_dashboard`
+- **Browser dashboards** — press **Alt+O** (or run `/research-open`). `export_dashboard`
   writes two self-contained pages to `.autoresearch-vkf/session/`:
   - `progress.html` — metric-over-time chart, experiment timeline, and memory
     lifecycle; auto-refreshes so an open tab tracks the run live.
@@ -271,8 +271,8 @@ own knowledge (marked low-reliability until verified).
 | `PI_AUTORESEARCH_VKF` | Path to the `vkf` executable (overrides auto-detection). |
 | `PI_AUTORESEARCH_VKF_CONDA_ENV` | Conda env to find `vkf` in (default `VKF`). |
 | `PI_AUTORESEARCH_GLOBAL_ROOT` | Root for the global cross-project memory (default `~`, i.e. `~/.autoresearch-vkf/memory/`). |
-| `PI_AUTORESEARCH_SHORTCUT` | Key for the fullscreen dashboard (default `ctrl+g`; `none` to disable). |
-| `PI_AUTORESEARCH_OPEN_SHORTCUT` | Key to open the progress page in the browser (default `ctrl+o`; `none` to disable — `/research-open` still works). |
+| `PI_AUTORESEARCH_SHORTCUT` | Key for the fullscreen dashboard (default `alt+g`; `none` to disable). |
+| `PI_AUTORESEARCH_OPEN_SHORTCUT` | Key to open the progress page in the browser (default `alt+o`; `none` to disable — `/research-open` still works). |
 
 </details>
 
