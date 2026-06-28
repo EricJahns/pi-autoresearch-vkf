@@ -32,7 +32,7 @@ Check, in order:
   `conflicts_with` the other card's id.
 - `deprecated` — true but stale/superseded/not applicable here.
 - `rejected` — misread, hallucinated, or unsupported.
-- (`locally_tested` / `replicated` are normally set by `log_experiment`, not here.)
+- (`locally_tested` / `replicated` are normally set by `vkf_log_experiment`, not here.)
 
 Always give a **reason** — it becomes part of the audit trail (a VKF
 transaction). After each call, the tool reports `vkf validate` so you can see the
@@ -46,5 +46,5 @@ bundle stays governed.
   the source.
 - A claim's truth in a paper ≠ its usefulness for our goal. Keep those separate.
 
-When the trusted set is healthy, hand back to **autoresearch-create** for the
+When the trusted set is healthy, hand back to **autoresearch-vkf** for the
 **hypothesis-loop**.

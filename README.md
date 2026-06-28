@@ -74,7 +74,7 @@ In a project you want to optimize:
 optimize the test suite runtime, using the research literature and remembering what works
 ```
 
-The **autoresearch-create** skill drives it: confirm goal/metric/command → init →
+The **autoresearch-vkf** skill drives it: confirm goal/metric/command → init →
 gather literature → extract & verify claims → loop (recall → experiment →
 write-back) → report. All state lives in one self-contained `.autoresearch-vkf/`
 folder at the project root, so work **survives restarts and context resets**.
@@ -86,7 +86,7 @@ goal ─► recall_memory ─► gather literature ─► remember_claim (candid
    │                                              │
    │                                         verify_claim ──► trusted claims
    ▼                                              │
- hypothesis-loop:  recall ─► pick idea ─► run_experiment ─► log_experiment
+ hypothesis-loop:  recall ─► pick idea ─► vkf_run_experiment ─► vkf_log_experiment
    │                                                            │
    │                                  writes experiment card back to memory,
    │                                  updates the claim's belief & lifecycle
@@ -135,8 +135,8 @@ verifier — is the defense against **memory poisoning**.
 | `score_ideas` | Rank untested ideas by `EV × feasibility × evidence × novelty × info_gain ÷ cost`. |
 | `find_contradictions` | Mine memory for tensions between claims — each a seed for a novel hypothesis. |
 | `find_transfers` | Cross-domain mechanism search: same *how*, different *where*. |
-| `run_experiment` | Run the measurement command; capture `METRIC name=value`. |
-| `log_experiment` | Record a result, write it back to memory, update belief & lifecycle. |
+| `vkf_run_experiment` | Run the measurement command; capture `METRIC name=value`. |
+| `vkf_log_experiment` | Record a result, write it back to memory, update belief & lifecycle. |
 | `promote_to_global` | Copy a trusted card into the cross-project global memory. |
 | `export_dashboard` | Write browser dashboards: a live progress page + the `vkf html` idea-lineage graph. |
 | `research_status` | Show session experiments + memory lifecycle. |
@@ -145,7 +145,7 @@ verifier — is the defense against **memory poisoning**.
 
 | Skill | Role |
 |-------|------|
-| `autoresearch-create` | Orchestrator / spine — the entry point. |
+| `autoresearch-vkf` | Orchestrator / spine — the entry point. |
 | `knowledge-gather` | Find candidate techniques via WebSearch/WebFetch (arXiv / Semantic Scholar / OpenAlex / GitHub). |
 | `claim-extract` | Distill sources into reusable claim cards. |
 | `claim-verify` | Check citations & codebase fit — the trust layer. |

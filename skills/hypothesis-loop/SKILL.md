@@ -33,9 +33,9 @@ ideas deliberately and you never repeat settled work.
      regress), *risk* (what could break), *novelty basis* (why it's not a repeat).
 
 4. **Run the smallest falsifying experiment.** Make the minimal change in scope,
-   then `run_experiment`. Read the `METRIC` line — don't eyeball logs.
+   then `vkf_run_experiment`. Read the `METRIC` line — don't eyeball logs.
 
-5. **Judge honestly, then `log_experiment`.** Record the value, the tested
+5. **Judge honestly, then `vkf_log_experiment`.** Record the value, the tested
    `claim_id`, whether you `kept` it, conditions, and notes. The tool:
    - derives win/loss/inconclusive vs the baseline,
    - writes an **experiment card back to memory** (a loss is durable knowledge),

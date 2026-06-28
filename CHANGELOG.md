@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.5.0 — unreleased
+## 0.5.1
+
+Fix tool/skill name collisions with pi-autoresearch (both can now load together).
+
+- Tools `run_experiment` → **`vkf_run_experiment`** and `log_experiment` →
+  **`vkf_log_experiment`** (pi-autoresearch registers the bare names; pi requires
+  globally-unique tool names across loaded extensions).
+- Skill `autoresearch-create` → **`autoresearch-vkf`** (pi-autoresearch ships a
+  skill of the same name). Invoke the loop via the `autoresearch-vkf` skill now.
+- Docs/skills/benchmark updated accordingly. No behavior change.
+
+## 0.5.0 — first published release
 
 Self-contained workspace (breaking path change).
 

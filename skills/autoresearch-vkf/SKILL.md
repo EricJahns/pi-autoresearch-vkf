@@ -1,5 +1,5 @@
 ---
-name: autoresearch-create
+name: autoresearch-vkf
 description: Run an autoresearch loop with verifiable long-term memory. Use when asked to optimize/improve a measurable target (test speed, bundle size, model loss, build time, Lighthouse score, …) by drawing on the research literature and remembering what was learned across runs. Orchestrates init → gather literature → extract & verify claims → recall → experiment → write results back to VKF memory → report.
 ---
 
@@ -21,8 +21,8 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 - `score_ideas` — rank untested ideas by priority (EV × feasibility × evidence × novelty × info_gain ÷ cost).
 - `find_contradictions` — mine memory for tensions that seed novel hypotheses.
 - `find_transfers` — cross-domain mechanism search for surprising analogies.
-- `run_experiment` — run the measurement command, capture `METRIC name=value`.
-- `log_experiment` — record a result and write it back to memory (updates belief & lifecycle).
+- `vkf_run_experiment` — run the measurement command, capture `METRIC name=value`.
+- `vkf_log_experiment` — record a result and write it back to memory (updates belief & lifecycle).
 - `research_status` — show session + memory state.
 
 ## The two layers
@@ -64,7 +64,7 @@ transaction record — promotion is an explicit, audited step.
 
 5. **Loop** → use the **hypothesis-loop** skill: `recall_memory` → pick the
    highest-value, sufficiently-novel idea → implement the smallest falsifying
-   change → `run_experiment` → `log_experiment` → repeat. Keep wins, revert
+   change → `vkf_run_experiment` → `vkf_log_experiment` → repeat. Keep wins, revert
    regressions; either way the result is now in memory.
 
 6. **Report** → use the **research-report** skill to produce the lineage report

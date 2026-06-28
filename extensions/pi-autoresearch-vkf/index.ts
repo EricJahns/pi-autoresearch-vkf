@@ -112,7 +112,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       if (existing) {
         refreshWidget(ctx, root);
         return textResult(
-          `A research session already exists: "${existing.name}".\nSession: ${sp.dir}\nMemory:  ${memoryPaths(root).dir}\nContinue the loop with recall_memory → run_experiment → log_experiment.`,
+          `A research session already exists: "${existing.name}".\nSession: ${sp.dir}\nMemory:  ${memoryPaths(root).dir}\nContinue the loop with recall_memory → vkf_run_experiment → vkf_log_experiment.`,
           { created: false },
         );
       }
@@ -144,7 +144,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           `Memory bundle: ${memoryPaths(root).dir} ${fresh ? "(new)" : "(existing)"} — profile ${config.memoryProfile}.`,
           `Optimizing ${config.metricName} (${config.direction} is better).`,
           "",
-          "Next: gather literature (knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → run_experiment → log_experiment.",
+          "Next: gather literature (knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → vkf_run_experiment → vkf_log_experiment.",
         ].join("\n"),
         { created: true },
       );
@@ -620,7 +620,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     },
   });
 
-  // ── run_experiment ─────────────────────────────────────────────────────────
+  // ── vkf_run_experiment ───────────────────────────────────────────────────────
   const RunParams = Type.Object({
     command: Type.Optional(Type.String({ description: "Command to run (via `bash -lc`). Defaults to the session's configured command." })),
     claim_id: Type.Optional(Type.String({ description: "The claim/idea this run is testing, for logging." })),
@@ -629,10 +629,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
-    name: "run_experiment",
+    name: "vkf_run_experiment",
     label: "Run experiment",
     description:
-      "Run the measurement command and capture its output and any `METRIC name=number` lines. Does not judge or record an outcome — read the metric, then record it with log_experiment.",
+      "Run the measurement command and capture its output and any `METRIC name=number` lines. Does not judge or record an outcome — read the metric, then record it with vkf_log_experiment.",
     parameters: RunParams,
     async execute(_id, params: Static<typeof RunParams>, signal, _onUpdate, ctx): Promise<AgentToolResult<{ code: number; metrics: Record<string, number> }>> {
       const root = resolveRoot(ctx);
@@ -667,7 +667,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     },
   });
 
-  // ── log_experiment ─────────────────────────────────────────────────────────
+  // ── vkf_log_experiment ───────────────────────────────────────────────────────
   const LogParams = Type.Object({
     description: Type.String({ description: "What was changed in this experiment, in words." }),
     value: Type.Number({ description: "The metric value obtained." }),
@@ -681,7 +681,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerTool({
-    name: "log_experiment",
+    name: "vkf_log_experiment",
     label: "Log experiment",
     description:
       "Record an experiment's result. Appends to the session log AND writes an experiment card back to the VKF memory (a win OR a loss is durable knowledge), updating the tested claim's belief and lifecycle. This write-back is what lets future runs avoid repeating work.",
