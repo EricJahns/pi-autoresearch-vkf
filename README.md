@@ -256,6 +256,28 @@ npm run bench       # standard autoresearch vs ours
 requirement pi has for loading `.ts` extensions). On a Node built without it, run
 the tests through a loader instead, e.g. `node --import tsx --test tests/*.test.mjs`.
 
+## Publishing
+
+The package ships its `.ts` extensions and `.md` skills as-is (pi loads them
+directly — no build step). The `files` whitelist publishes only `extensions/`,
+`skills/`, and the docs; `prepublishOnly` runs `typecheck` as a gate.
+
+Two ways to release:
+
+- **Tagged CI release (recommended).** Add an npm *Automation* token as the repo
+  secret `NPM_TOKEN`, then bump the version and push a matching tag — the
+  [`publish.yml`](.github/workflows/publish.yml) workflow publishes with provenance:
+  ```sh
+  npm version patch        # or minor/major — updates package.json + makes a tag
+  git push --follow-tags
+  ```
+- **Manual.** `npm login`, then:
+  ```sh
+  npm publish --access public      # prepublishOnly runs typecheck first
+  ```
+
+Verify what will ship first with `npm pack --dry-run`.
+
 ## Roadmap
 
 All four planned phases are in: the lean MVP (Phase 1), the **novelty scorer**

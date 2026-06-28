@@ -46,7 +46,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "bench": "node --experimental-strip-types benchmark/run.ts --seeds 500"
+    "bench": "node --experimental-strip-types benchmark/run.ts --seeds 500",
+    "prepublishOnly": "npm run typecheck"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
