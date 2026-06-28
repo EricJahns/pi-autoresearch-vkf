@@ -19,6 +19,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 
 import {
@@ -1086,7 +1087,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         await ctx.ui.custom<void>((_tui, _theme, _kb, done) => {
           let lines = buildFullscreenLines(root);
           return {
-            render: () => lines,
+            // Truncate to the viewport width — pi crashes the render if any line
+            // overflows. truncateToWidth is ANSI-aware, so our color codes are
+            // measured/clipped correctly.
+            render: (width: number) => lines.map((l) => truncateToWidth(l, width)),
             invalidate: () => {
               lines = buildFullscreenLines(root);
             },
