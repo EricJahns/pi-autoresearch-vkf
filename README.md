@@ -218,12 +218,14 @@ novelty), then synthesis unlocks the combo.
 
 Three live views, in increasing detail:
 
-- **Widget** (always on, above the editor) — win/loss counts, best metric, memory
-  state tally; refreshes after every tool call.
+- **Widget** (always on, above the editor) — run/kept/discarded counts, best
+  metric, memory tally, and a table of the recent runs (commit · every metric ·
+  status · change); refreshes after every tool call.
 - **Fullscreen overlay** — press **Ctrl+G** (or call `research_status`) for the
   full experiment list, memory lifecycle, and verified claims.
-- **Browser dashboards** — `export_dashboard` writes two self-contained pages to
-  `.autoresearch-vkf/session/`:
+- **Browser dashboards** — press **Ctrl+O** (or run `/research-open`) to open the
+  live progress page in your default browser. `export_dashboard` writes two
+  self-contained pages to `.autoresearch-vkf/session/`:
   - `progress.html` — metric-over-time chart, experiment timeline, and memory
     lifecycle; auto-refreshes so an open tab tracks the run live.
   - `dashboard.html` — the interactive **idea-lineage graph** (paper → claim →
@@ -242,6 +244,8 @@ Three live views, in increasing detail:
   (default `~`, i.e. the bundle lives at `~/.autoresearch-vkf/memory/`).
 - `PI_AUTORESEARCH_SHORTCUT` — key for the fullscreen dashboard (default `ctrl+g`;
   set to `none` to disable).
+- `PI_AUTORESEARCH_OPEN_SHORTCUT` — key to open the progress page in the browser
+  (default `ctrl+o`; set to `none` to disable — `/research-open` still works).
 
 ## Development
 
