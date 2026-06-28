@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.8.6
+## 0.8.7
 
-Nicer widget, and avoid pi's reserved keybindings.
+Nicer widget: color and run numbers.
 
 - **Colored widget & overlay.** The live widget and fullscreen overlay now use
   ANSI color (named colors that follow your terminal theme): green wins / red
@@ -11,6 +11,11 @@ Nicer widget, and avoid pi's reserved keybindings.
 - **Run-number column + newest-at-bottom.** The runs table gains a `#` column and
   is ordered oldest→newest (newest highlighted at the bottom); the shortcut hint
   moved into the header block so pi's bottom-truncation can't hide it.
+
+## 0.8.6
+
+Avoid pi's reserved keybindings.
+
 - **Default shortcuts moved to alt+.** The fullscreen dashboard and open-in-browser
   shortcuts now default to **alt+g** and **alt+o** (were `ctrl+g`/`ctrl+o`), which
   pi reserves. Override with `PI_AUTORESEARCH_SHORTCUT` /
