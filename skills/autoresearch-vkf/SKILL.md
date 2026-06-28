@@ -69,9 +69,11 @@ transaction record — promotion is an explicit, audited step.
    result is now in memory. Gathering literature isn't a one-shot up-front step:
    each result re-opens questions, so keep returning to the literature and the
    synthesis skills (step 4b) between experiments rather than grinding the same
-   ideas. Reading more between goes is the point — and don't fall back on "train
-   longer" / more epochs to move the metric unless the user asked for it or the
-   model is visibly under-trained.
+   ideas. Reading more between goes is the point. And don't lean on small knobs to
+   move the metric — repeatedly fine-tuning a scheduler, LR, or epochs is off the
+   table unless that knob is clearly the limiting factor (it's still yielding
+   significant, non-stagnating gains) or the user asked for it; otherwise change
+   *how* the method works.
 
 6. **Report** → use the **autoresearch-vkf-research-report** skill to produce the lineage report
    (paper → claim → hypothesis → patch → metric Δ → status → memory update).
