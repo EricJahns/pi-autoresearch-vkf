@@ -19,7 +19,8 @@
  *
  * Pure module (no fs, no pi runtime) so it is fully unit-testable.
  */
-import type { Verification } from "./cards.ts";
+import type { Altitude, Verification } from "./cards.ts";
+import type { AltitudePreference } from "./config.ts";
 
 /** Evidence strength implied by a card's verification level, in [0,1]. */
 export const EVIDENCE_STRENGTH: Record<Verification, number> = {
@@ -104,6 +105,9 @@ export interface IdeaInput {
   feasibility?: number;
   info_gain?: number;
   implementation_cost?: number;
+  /** Coverage tags (see ./cards.ts) — drive structural novelty + altitude bias. */
+  lever?: string;
+  altitude?: Altitude | string;
 }
 
 export interface ScoreFactors {
@@ -111,6 +115,10 @@ export interface ScoreFactors {
   feasibility: number;
   evidence_strength: number;
   novelty: number;
+  /** How under-explored this idea's lever·altitude bucket is, [0,1]. */
+  structural_novelty: number;
+  /** Goal-gated bias for the idea's altitude (1 = neutral). */
+  altitude_affinity: number;
   info_gain: number;
   implementation_cost: number;
 }
@@ -122,6 +130,19 @@ export interface ScoredIdea {
   factors: ScoreFactors;
   /** Max similarity to already-explored / playbook text (drives novelty). */
   max_similarity: number;
+  /** The `lever|altitude` bucket this idea falls in. */
+  bucket: string;
+}
+
+/** Altitude bias per preference mode; missing altitude is treated as neutral. */
+const ALTITUDE_AFFINITY: Record<AltitudePreference, Record<string, number>> = {
+  any: { hyperparameter: 1, component: 1, mechanism: 1, reframe: 1 },
+  high: { hyperparameter: 0.7, component: 0.9, mechanism: 1, reframe: 1 },
+  tuning: { hyperparameter: 1, component: 0.8, mechanism: 0.6, reframe: 0.5 },
+};
+
+export function bucketKey(lever?: string, altitude?: string): string {
+  return `${lever ?? "untagged"}|${altitude ?? "untagged"}`;
 }
 
 export interface ScoreOptions {
@@ -129,6 +150,12 @@ export interface ScoreOptions {
   explored?: readonly string[];
   /** Standard-playbook phrases to penalize. Defaults to DEFAULT_PLAYBOOK. */
   playbook?: readonly string[];
+  /** Count of already-run experiments per `lever|altitude` bucket. */
+  bucketCounts?: Record<string, number>;
+  /** Total already-run experiments (denominator for bucket saturation). */
+  exploredTotal?: number;
+  /** Altitude bias mode. Default "any" (neutral). */
+  altitudePreference?: AltitudePreference;
 }
 
 /**
@@ -161,25 +188,129 @@ export function scoreIdea(idea: IdeaInput, opts: ScoreOptions = {}): ScoredIdea 
     maxSimilarity(idea.text, playbook),
   );
   const recency = clamp(idea.recency_score ?? 0.5, 0, 1);
-  const novelty = clamp((1 - max_similarity) * (0.5 + 0.5 * recency), 0, 1);
+  const lexicalNovelty = (1 - max_similarity) * (0.5 + 0.5 * recency);
+
+  // Structural novelty: how under-explored this idea's lever·altitude bucket is.
+  // A 12th tweak to an already-saturated bucket is *lexically* fresh but
+  // structurally stale — this is what actually pushes the loop off tuning.
+  const bucket = bucketKey(idea.lever, idea.altitude);
+  const exploredTotal = opts.exploredTotal ?? 0;
+  const saturation = exploredTotal > 0 ? (opts.bucketCounts?.[bucket] ?? 0) / exploredTotal : 0;
+  const structural_novelty = clamp(1 - saturation, 0, 1);
+  const novelty = clamp(lexicalNovelty * (0.5 + 0.5 * structural_novelty), 0, 1);
+
+  // Goal-gated altitude bias. Neutral by default; "tuning" leaves tweaks alone.
+  const affinity = ALTITUDE_AFFINITY[opts.altitudePreference ?? "any"];
+  const altitude_affinity = affinity[idea.altitude ?? "component"] ?? 1;
 
   const info_gain = clamp(idea.info_gain ?? 1 - Math.abs(belief - 0.5) * 2, 0.05, 1);
   const implementation_cost = clamp(idea.implementation_cost ?? 0.4, 0.05, 1);
 
   const priority =
-    (expected_value * feasibility * evidence_strength * novelty * info_gain) /
+    (expected_value * feasibility * evidence_strength * novelty * info_gain * altitude_affinity) /
     implementation_cost;
 
   return {
     id: idea.id,
     title: idea.title,
     priority,
-    factors: { expected_value, feasibility, evidence_strength, novelty, info_gain, implementation_cost },
+    factors: {
+      expected_value,
+      feasibility,
+      evidence_strength,
+      novelty,
+      structural_novelty,
+      altitude_affinity,
+      info_gain,
+      implementation_cost,
+    },
     max_similarity,
+    bucket,
   };
 }
 
 /** Score and rank ideas, highest priority first. */
 export function rankIdeas(ideas: readonly IdeaInput[], opts: ScoreOptions = {}): ScoredIdea[] {
   return ideas.map((i) => scoreIdea(i, opts)).sort((a, b) => b.priority - a.priority);
+}
+
+// ── explore / exploit budget ────────────────────────────────────────────────
+
+export type Slot = "explore" | "exploit";
+
+/**
+ * An idea is an *explore* bet if it's high-altitude (mechanism/reframe) or it
+ * opens up an under-explored `lever·altitude` bucket. Everything else is an
+ * *exploit* — a reliable, incremental move on well-trodden ground. (Outcome
+ * uncertainty already feeds `info_gain` in the priority; using it here too would
+ * mark almost every mid-belief idea "explore" and wash out the distinction.)
+ */
+export function classifySlot(r: ScoredIdea, idea: IdeaInput): Slot {
+  const highAltitude = idea.altitude === "mechanism" || idea.altitude === "reframe";
+  return highAltitude || r.factors.structural_novelty > 0.6 ? "explore" : "exploit";
+}
+
+export interface BalancedPick {
+  r: ScoredIdea;
+  idea: IdeaInput;
+  slot: Slot;
+}
+
+interface Candidate extends BalancedPick {}
+
+/** Take up to `n` from `pool`, preferring unseen buckets, then filling the rest. */
+function pickDiverse(
+  pool: Candidate[],
+  n: number,
+  usedBuckets: Set<string>,
+  chosen: Set<string>,
+): Candidate[] {
+  const out: Candidate[] = [];
+  for (const pass of [true, false]) {
+    for (const c of pool) {
+      if (out.length >= n) break;
+      if (chosen.has(c.r.id)) continue;
+      if (pass && usedBuckets.has(c.r.bucket)) continue; // first pass: distinct buckets
+      out.push(c);
+      chosen.add(c.r.id);
+      usedBuckets.add(c.r.bucket);
+    }
+  }
+  return out;
+}
+
+/**
+ * Pick the next `k` experiments, reserving ⌈exploreFraction·k⌉ slots for explore
+ * bets even when their raw priority is lower — this is the mechanism that stops
+ * reliable small tweaks from crowding out high-variance conceptual bets. Within
+ * each slot type, prefer distinct `lever·altitude` buckets so the batch isn't k
+ * near-duplicates. `exploreFraction = 0` ⇒ no reserved explore slots.
+ */
+export function selectBalanced(
+  scored: readonly { r: ScoredIdea; idea: IdeaInput }[],
+  opts: { exploreFraction: number; k: number },
+): BalancedPick[] {
+  const k = Math.max(1, Math.floor(opts.k));
+  const frac = clamp(opts.exploreFraction, 0, 1);
+  const exploreSlots = Math.ceil(frac * k);
+  const exploitSlots = k - exploreSlots;
+
+  const ranked: Candidate[] = [...scored]
+    .sort((a, b) => b.r.priority - a.r.priority)
+    .map((s) => ({ ...s, slot: classifySlot(s.r, s.idea) }));
+
+  const exploit = ranked.filter((c) => c.slot === "exploit");
+  const explore = ranked.filter((c) => c.slot === "explore");
+
+  const usedBuckets = new Set<string>();
+  const chosen = new Set<string>();
+  const picks: Candidate[] = [
+    ...pickDiverse(exploit, exploitSlots, usedBuckets, chosen),
+    ...pickDiverse(explore, exploreSlots, usedBuckets, chosen),
+  ];
+  // Backfill from anything left if a pool came up short.
+  if (picks.length < k) {
+    picks.push(...pickDiverse(ranked, k - picks.length, usedBuckets, chosen));
+  }
+  return picks.sort((a, b) => b.r.priority - a.r.priority);
 }

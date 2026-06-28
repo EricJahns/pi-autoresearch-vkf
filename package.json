@@ -1,6 +1,6 @@
 {
   "name": "pi-autoresearch-vkf",
-  "version": "0.8.0",
+  "version": "0.8.5",
   "type": "module",
   "description": "Autoresearch with verifiable long-term scientific memory. A pi extension that gathers literature, stores it as VKF claims, runs experiments, and writes verified results back to a git-native knowledge bundle so future runs build on what was learned instead of rediscovering it.",
   "keywords": [

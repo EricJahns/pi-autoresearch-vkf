@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.5
+
+Make novelty structural and reserve budget for high-altitude bets — so the loop
+stops defaulting to incremental hyperparameter tuning (unless that's the goal).
+
+- **Structural novelty.** `score_ideas` novelty now blends lexical distance with
+  *structural* novelty: how under-explored an idea's `lever·altitude` bucket is.
+  A reworded tweak to a bucket you've already hammered now scores low even though
+  its wording is fresh — the gap the old lexical-only novelty couldn't see.
+- **Altitude bias (goal-gated).** Priority gains an `altitude_affinity` factor.
+  Open-ended goals mildly favor mechanism/reframe ideas; an explicit tuning goal
+  ("tune", "sweep", "hyperparameter", "grid search") sets it to neutral so tweaks
+  rank normally — if you asked for tuning, you get tuning.
+- **Explore/exploit budget.** `score_ideas` returns a budget-balanced shortlist
+  that reserves `⌈exploreFraction·k⌉` slots for explore bets (high-altitude or
+  under-explored buckets) even when their raw priority is lower, with bucket
+  diversification so the batch isn't k near-duplicates. Default 30% exploration;
+  0% under a tuning goal.
+- **`set_research_mode`** tool steers `explore_fraction` / `altitude_preference`
+  mid-run. The hypothesis-loop skill now tells the agent to honor the explore
+  quota across a run.
+
 ## 0.8.0
 
 Tag ideas by *lever* and *altitude*, and surface a coverage map (the rut-detector).
