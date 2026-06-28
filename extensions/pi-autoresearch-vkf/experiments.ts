@@ -23,8 +23,12 @@ export interface Experiment {
   description: string;
   /** Claim/idea this experiment tested (a VKF id, e.g. "claim:adagc"). */
   claim_id?: string;
-  /** Metric value obtained. */
+  /** Primary metric value obtained (the session's configured metric). */
   value?: number;
+  /** All `METRIC name=value` pairs recorded for this run, primary metric included. */
+  metrics?: Record<string, number>;
+  /** Short (7-char) commit hash capturing the change, if known. */
+  commit?: string;
   /** Baseline this run was compared against. */
   baseline?: number;
   /** Outcome relative to the baseline and metric direction. */
@@ -92,6 +96,10 @@ export interface ExperimentSummary {
   loss: number;
   inconclusive: number;
   pending: number;
+  /** Runs whose change was kept (`kept === true`). */
+  kept: number;
+  /** Runs whose change was reverted (`kept === false`). */
+  discarded: number;
   /** Best metric value seen, respecting direction. */
   best?: number;
 }
@@ -100,13 +108,29 @@ export function summarize(
   experiments: Experiment[],
   direction: MetricDirection,
 ): ExperimentSummary {
-  const s: ExperimentSummary = { total: experiments.length, win: 0, loss: 0, inconclusive: 0, pending: 0 };
+  const s: ExperimentSummary = {
+    total: experiments.length,
+    win: 0,
+    loss: 0,
+    inconclusive: 0,
+    pending: 0,
+    kept: 0,
+    discarded: 0,
+  };
   for (const e of experiments) {
     s[e.outcome] += 1;
+    if (e.kept === true) s.kept += 1;
+    else if (e.kept === false) s.discarded += 1;
     if (e.value !== undefined) {
       if (s.best === undefined) s.best = e.value;
       else s.best = direction === "higher" ? Math.max(s.best, e.value) : Math.min(s.best, e.value);
     }
   }
   return s;
+}
+
+/** The metrics map for a run, falling back to the primary value for older records. */
+export function experimentMetrics(e: Experiment, primaryMetric: string): Record<string, number> {
+  if (e.metrics && Object.keys(e.metrics).length > 0) return e.metrics;
+  return e.value === undefined ? {} : { [primaryMetric]: e.value };
 }

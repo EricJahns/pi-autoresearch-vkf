@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0
+
+Turn the live widget into a tabular experiment view and add a one-key browser open.
+
+- The above-editor widget now shows a **table of the recent runs** — truncated
+  7-char commit, a column per recorded metric, status (keep/discard/outcome), and
+  a short description — above run/kept/discarded counts and the memory tally.
+  Columns are data-driven from each run's `METRIC name=value` lines (no metric
+  names are hardcoded; the session's configured metric is pinned first), capped at
+  5 columns for readability — the browser page still has every metric.
+- Experiments now persist **all** parsed metrics and the capturing commit (the
+  working dir's `HEAD` by default), not just the primary metric value.
+- **Open in browser**: press **Ctrl+O** (configurable via
+  `PI_AUTORESEARCH_OPEN_SHORTCUT`) or run **`/research-open`** to launch the live
+  `progress.html` in your default browser. The widget footer advertises the keys.
+
 ## 0.6.0
 
 Add keyless web access so the gather step works on stock pi.

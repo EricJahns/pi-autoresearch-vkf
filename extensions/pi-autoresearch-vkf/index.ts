@@ -15,9 +15,10 @@
  * as a VKF *candidate* with a transaction record; promotion to a trusted state is
  * an explicit, audited step — never silent.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 
 import {
@@ -682,7 +683,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     kept: Type.Optional(Type.Boolean({ description: "Whether the change was kept (vs reverted)." })),
     conditions: Type.Optional(Type.String({ description: "Conditions under which this holds (model size, dataset, etc.) — recorded on the memory card." })),
     notes: Type.Optional(Type.String({ description: "Deviations, surprises, next tests." })),
-    commit: Type.Optional(Type.String({ description: "Git commit capturing the change, if any." })),
+    commit: Type.Optional(Type.String({ description: "Git commit capturing the change, if any. Defaults to the current HEAD of the working dir." })),
+    metrics: Type.Optional(Type.Record(Type.String(), Type.Number(), { description: "All `METRIC name=value` pairs from the run (from vkf_run_experiment), so the dashboard can show every metric — not just the primary one." })),
   });
 
   pi.registerTool({
@@ -700,6 +702,11 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const baseline = params.baseline ?? config.baseline;
       const outcome: Outcome = params.outcome ?? deriveOutcome(baseline, params.value, config.direction);
 
+      // Record every metric (primary included), and the commit that captured the change.
+      const metrics = { ...(params.metrics ?? {}) };
+      if (metrics[config.metricName] === undefined) metrics[config.metricName] = params.value;
+      const commit = shortCommit(params.commit, config.workingDir ?? root);
+
       const experiments = readExperiments(sp.experiments);
       const seq = String(experiments.length + 1).padStart(3, "0");
       const expEntry: Experiment = {
@@ -707,6 +714,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         description: params.description,
         claim_id: params.claim_id,
         value: params.value,
+        metrics,
+        commit,
         baseline,
         outcome,
         kept: params.kept,
@@ -1007,6 +1016,42 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     });
   }
 
+  // ── open the live progress page in the default browser ───────────────────────
+  const openProgress = async (ctx: ExtensionContext): Promise<void> => {
+    const root = resolveRoot(ctx);
+    if (!hasSession(root)) {
+      if (ctx.hasUI) ctx.ui.notify("No pi-autoresearch-vkf session in this directory yet.", "warning");
+      return;
+    }
+    // Make sure the file exists/is current before handing it to the browser.
+    const file = writeProgressDashboard(root);
+    if (!file) {
+      if (ctx.hasUI) ctx.ui.notify("Could not generate the progress page.", "error");
+      return;
+    }
+    const [cmd, args] = browserOpenCommand(file);
+    try {
+      await pi.exec(cmd, args, { timeout: 10_000 });
+      if (ctx.hasUI) ctx.ui.notify(`Opened progress page in your browser (${cmd}).`, "info");
+    } catch (e) {
+      if (ctx.hasUI) ctx.ui.notify(`Couldn't launch a browser — open ${file} manually. (${(e as Error).message})`, "error");
+    }
+  };
+
+  if (shortcuts.openBrowser) {
+    pi.registerShortcut(shortcuts.openBrowser, {
+      description: "Open the pi-autoresearch-vkf progress page in the browser",
+      handler: openProgress,
+    });
+  }
+
+  pi.registerCommand("research-open", {
+    description: "Open the pi-autoresearch-vkf progress page in your browser",
+    handler: async (_args, ctx) => {
+      await openProgress(ctx);
+    },
+  });
+
   // ── lifecycle ────────────────────────────────────────────────────────────────
   pi.on("session_start", async (_event, ctx) => {
     refreshWidget(ctx, resolveRoot(ctx));
@@ -1150,6 +1195,37 @@ function writeProgressDashboard(root: string, refreshSeconds?: number): string |
   });
   writeFileSync(sp.progressHtml, html, "utf8");
   return sp.progressHtml;
+}
+
+/**
+ * Normalize a commit reference to a 7-char short hash. Uses the explicit value
+ * if given, otherwise best-effort reads the working dir's current HEAD. Returns
+ * `undefined` when there is no resolvable commit (not a repo, git missing, …).
+ */
+function shortCommit(explicit: string | undefined, cwd: string): string | undefined {
+  const trim = (s: string): string | undefined => {
+    const h = s.trim().replace(/^[^0-9a-f]*/i, "");
+    return /^[0-9a-f]{7,}$/i.test(h) ? h.slice(0, 7) : undefined;
+  };
+  if (explicit) return trim(explicit) ?? (explicit.trim().slice(0, 7) || undefined);
+  try {
+    return trim(execFileSync("git", ["rev-parse", "--short=7", "HEAD"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
+  } catch {
+    return undefined;
+  }
+}
+
+/** The platform command that opens a file/URL in the user's default browser. */
+function browserOpenCommand(target: string): [string, string[]] {
+  switch (process.platform) {
+    case "darwin":
+      return ["open", [target]];
+    case "win32":
+      // `start` is a cmd builtin; the empty "" is the window-title placeholder.
+      return ["cmd", ["/c", "start", "", target]];
+    default:
+      return ["xdg-open", [target]];
+  }
 }
 
 function writeFileIfAbsent(path: string, contents: string): void {
