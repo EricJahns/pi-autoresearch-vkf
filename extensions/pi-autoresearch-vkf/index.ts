@@ -136,6 +136,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const fresh = scaffoldMemoryBundle(root, params.name, config.memoryProfile);
       appendLog(sp.log, { event: "init", name: config.name, goal: config.goal });
 
+      // Create the progress dashboard up front so it exists from iteration zero;
+      // it then refreshes automatically as experiments are logged.
+      writeProgressDashboard(root);
       refreshWidget(ctx, root);
       return textResult(
         [
@@ -249,6 +252,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       });
       appendLog(sp.log, { event: "remember", claim_id: claim.id, paper_id: paperId });
 
+      writeProgressDashboard(root);
       refreshWidget(ctx, root);
       return textResult(
         [
@@ -319,6 +323,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       });
       appendLog(sp.log, { event: "verify", claim_id: params.id, decision: params.decision });
 
+      writeProgressDashboard(root);
       refreshWidget(ctx, root);
       return textResult(
         [
@@ -774,6 +779,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         writeConfig(sp.config, config);
       }
 
+      // Refresh the browser progress page so an open tab tracks the loop live.
+      writeProgressDashboard(root);
       refreshWidget(ctx, root);
       const summary = summarize(readExperiments(sp.experiments), config.direction);
       return textResult(
@@ -853,7 +860,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     name: "export_dashboard",
     label: "Export dashboard",
     description:
-      "Write browser dashboards for the run: a self-contained progress page (.auto/progress.html — metric-over-time chart, experiment timeline, memory lifecycle) and, via the vkf CLI, the interactive idea-lineage graph (.auto/dashboard.html — paper → claim → experiment). Re-run any time to refresh; open progress.html in a browser to watch progress as it goes.",
+      "Build the interactive idea-lineage graph (.autoresearch-vkf/session/dashboard.html — paper → claim → experiment, via the vkf CLI) and refresh the progress page. The progress page (progress.html — metric-over-time chart, experiment timeline, memory lifecycle) is also written automatically on init and after each remember/verify/experiment, and meta-refreshes itself, so an open browser tab tracks the loop live without re-running this. Use this tool for the lineage graph, a custom refresh interval, or to open the page in a browser.",
     parameters: ExportParams,
     async execute(_id, params: Static<typeof ExportParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ progress: string; lineage?: string }>> {
       const root = resolveRoot(ctx);
@@ -861,42 +868,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       requireSession(root);
       const config = readConfig(sp.config)!;
 
-      // Progress page (self-contained, no CLI needed).
-      const experiments: ProgressExperiment[] = readExperiments(sp.experiments).map((e) => ({
-        id: e.id,
-        description: e.description,
-        value: e.value,
-        outcome: e.outcome,
-        kept: e.kept,
-        claim_id: e.claim_id,
-        ts: e.ts,
-      }));
-      const memory: Record<string, number> = Object.fromEntries(MEMORY_STATES.map((s) => [s, 0]));
-      for (const c of listCards(root, { type: "claim" })) {
-        const st = c.meta["memory_state"] as MemoryState | undefined;
-        if (st && st in memory) memory[st]! += 1;
-      }
-      const claims = listCards(root, { bucket: "verified", type: "claim" })
-        .slice(0, 12)
-        .map((c) => ({
-          title: String(c.meta["title"] ?? c.meta["id"]),
-          confidence: String(c.meta["confidence"] ?? "—"),
-          state: String(c.meta["memory_state"] ?? "—"),
-        }));
-
-      const progressHtml = renderProgressHtml({
-        name: config.name,
-        goal: config.goal,
-        metricName: config.metricName,
-        direction: config.direction,
-        baseline: config.baseline,
-        experiments,
-        memory,
-        claims,
-        generatedAt: new Date().toISOString(),
-        refreshSeconds: params.refresh_seconds,
-      });
-      writeFileSync(sp.progressHtml, progressHtml, "utf8");
+      // Progress page (self-contained, no CLI needed). Same generator the loop
+      // calls automatically on init and after each experiment.
+      writeProgressDashboard(root, params.refresh_seconds);
 
       // Lineage graph via the vkf CLI (best-effort).
       const lineage = vkf.html(memoryPaths(root).dir, sp.dashboardHtml, `Research memory — ${config.name}`);
@@ -942,6 +916,75 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     },
   });
 
+  // ── WebSearch ────────────────────────────────────────────────────────────────
+  // The pi host ships no web tools, but the gather skill needs them. These two
+  // tools give the agent keyless web access: WebSearch (DuckDuckGo HTML) to
+  // discover sources, WebFetch to read pages and hit free APIs (arXiv, OpenAlex,
+  // Crossref, Semantic Scholar). Named to match the skill text and pi-ai's
+  // Claude-Code tool-name table so prompt caching stays aligned.
+  const WebSearchParams = Type.Object({
+    query: Type.String({ description: "Search query. Prefer the mechanism of the problem over bare keywords." }),
+    max_results: Type.Optional(Type.Number({ description: "Max results to return (default 8, capped at 25)." })),
+  });
+
+  pi.registerTool({
+    name: "WebSearch",
+    label: "Web search",
+    description:
+      "Search the web with no API key (via DuckDuckGo) and return result titles, URLs, and snippets. Discovery step for the autoresearch gather skill — then read the hits with WebFetch.",
+    parameters: WebSearchParams,
+    async execute(_id, params: Static<typeof WebSearchParams>, signal): Promise<AgentToolResult<{ results: WebSearchHit[] }>> {
+      const limit = Math.max(1, Math.min(params.max_results ?? 8, 25));
+      const endpoint = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(params.query)}`;
+      let fetched: FetchedText;
+      try {
+        fetched = await fetchText(endpoint, signal ?? undefined, 20_000);
+      } catch (e) {
+        return textResult(`Web search failed: ${(e as Error).message}`, { results: [] });
+      }
+      const results = parseDdgResults(fetched.body, limit);
+      if (results.length === 0) {
+        return textResult(
+          `No results parsed for "${params.query}" (HTTP ${fetched.status}). The search backend may be rate-limiting; fall back to WebFetch against a known API (arXiv, OpenAlex, Crossref, Semantic Scholar).`,
+          { results: [] },
+        );
+      }
+      const body = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join("\n\n");
+      return textResult(truncate(body), { results });
+    },
+  });
+
+  // ── WebFetch ─────────────────────────────────────────────────────────────────
+  const WebFetchParams = Type.Object({
+    url: Type.String({ description: "http(s) URL to fetch. JSON/text is returned verbatim; HTML is reduced to readable text." }),
+    max_chars: Type.Optional(Type.Number({ description: `Max characters of content to return (default ${MAX_OUTPUT_CHARS}).` })),
+  });
+
+  pi.registerTool({
+    name: "WebFetch",
+    label: "Web fetch",
+    description:
+      "Fetch a URL with no API key — JSON/text verbatim, HTML reduced to readable text. Use for the free literature APIs (arXiv, OpenAlex, Crossref, Semantic Scholar) and for reading pages found via WebSearch.",
+    parameters: WebFetchParams,
+    async execute(_id, params: Static<typeof WebFetchParams>, signal): Promise<AgentToolResult<{ status: number; url: string; content_type: string }>> {
+      if (!/^https?:\/\//i.test(params.url)) {
+        return textResult(`Refusing to fetch non-http(s) URL: ${params.url}`, { status: 0, url: params.url, content_type: "" });
+      }
+      let fetched: FetchedText;
+      try {
+        fetched = await fetchText(params.url, signal ?? undefined, 30_000);
+      } catch (e) {
+        return textResult(`Fetch failed for ${params.url}: ${(e as Error).message}`, { status: 0, url: params.url, content_type: "" });
+      }
+      const isHtml = /text\/html|application\/xhtml/i.test(fetched.contentType);
+      const text = isHtml ? htmlToText(fetched.body) : fetched.body;
+      const cap = Math.max(500, params.max_chars ?? MAX_OUTPUT_CHARS);
+      const capped = text.length <= cap ? text : text.slice(0, cap) + `\n…[truncated ${text.length - cap} chars]`;
+      const header = `GET ${fetched.finalUrl}\n(HTTP ${fetched.status} · ${fetched.contentType || "unknown"} · ${isHtml ? "html→text" : "raw"})\n\n`;
+      return textResult(header + capped, { status: fetched.status, url: fetched.finalUrl, content_type: fetched.contentType });
+    },
+  });
+
   // ── shortcut: fullscreen dashboard ───────────────────────────────────────────
   const shortcuts = loadShortcuts();
   if (shortcuts.fullscreenDashboard) {
@@ -974,7 +1017,140 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
   });
 }
 
+// ── web helpers ───────────────────────────────────────────────────────────────
+
+const WEB_USER_AGENT = "pi-autoresearch-vkf (+https://github.com/EricJahns/pi-autoresearch-vkf)";
+
+interface FetchedText {
+  status: number;
+  contentType: string;
+  body: string;
+  finalUrl: string;
+}
+
+interface WebSearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+/** Fetch a URL as text, following redirects, aborting on the tool signal or timeout. */
+async function fetchText(url: string, signal: AbortSignal | undefined, timeoutMs: number): Promise<FetchedText> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const composed = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const res = await fetch(url, {
+    redirect: "follow",
+    signal: composed,
+    headers: { "user-agent": WEB_USER_AGENT, accept: "*/*" },
+  });
+  const body = await res.text();
+  return { status: res.status, contentType: res.headers.get("content-type") ?? "", body, finalUrl: res.url || url };
+}
+
+/** Reduce an HTML document to readable plain text (best-effort, no DOM). */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|tr|h[1-6]|section|article)\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&#x27;/gi, "'")
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCodePoint(Number(n)))
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/** DuckDuckGo HTML wraps result links as //duckduckgo.com/l/?uddg=<encoded>. Unwrap them. */
+function decodeDdgHref(href: string): string {
+  const m = href.match(/[?&]uddg=([^&]+)/);
+  if (m && m[1]) {
+    try {
+      return decodeURIComponent(m[1]);
+    } catch {
+      /* fall through to raw href */
+    }
+  }
+  return href.startsWith("//") ? "https:" + href : href;
+}
+
+/** Parse titles/urls/snippets out of a DuckDuckGo HTML results page. */
+function parseDdgResults(html: string, limit: number): WebSearchHit[] {
+  const snippets: string[] = [];
+  const snippetRe = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  let s: RegExpExecArray | null;
+  while ((s = snippetRe.exec(html)) !== null) snippets.push(htmlToText(s[1] ?? ""));
+
+  const hits: WebSearchHit[] = [];
+  const linkRe = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = linkRe.exec(html)) !== null && hits.length < limit) {
+    hits.push({ title: htmlToText(m[2] ?? ""), url: decodeDdgHref(m[1] ?? ""), snippet: snippets[i] ?? "" });
+    i++;
+  }
+  return hits;
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * (Re)generate the self-contained progress dashboard (progress.html) from the
+ * current session + memory state. Pure-JS and cheap (no CLI), so it is safe to
+ * call on every state change — an open browser tab meta-refreshes itself live.
+ * No-op (returns undefined) when there is no session/config yet. The interactive
+ * idea-lineage graph (dashboard.html) is heavier and stays in export_dashboard.
+ */
+function writeProgressDashboard(root: string, refreshSeconds?: number): string | undefined {
+  const sp = sessionPaths(root);
+  const config = readConfig(sp.config);
+  if (!config) return undefined;
+
+  const experiments: ProgressExperiment[] = readExperiments(sp.experiments).map((e) => ({
+    id: e.id,
+    description: e.description,
+    value: e.value,
+    outcome: e.outcome,
+    kept: e.kept,
+    claim_id: e.claim_id,
+    ts: e.ts,
+  }));
+  const memory: Record<string, number> = Object.fromEntries(MEMORY_STATES.map((s) => [s, 0]));
+  for (const c of listCards(root, { type: "claim" })) {
+    const st = c.meta["memory_state"] as MemoryState | undefined;
+    if (st && st in memory) memory[st]! += 1;
+  }
+  const claims = listCards(root, { bucket: "verified", type: "claim" })
+    .slice(0, 12)
+    .map((c) => ({
+      title: String(c.meta["title"] ?? c.meta["id"]),
+      confidence: String(c.meta["confidence"] ?? "—"),
+      state: String(c.meta["memory_state"] ?? "—"),
+    }));
+
+  const html = renderProgressHtml({
+    name: config.name,
+    goal: config.goal,
+    metricName: config.metricName,
+    direction: config.direction,
+    baseline: config.baseline,
+    experiments,
+    memory,
+    claims,
+    generatedAt: new Date().toISOString(),
+    refreshSeconds,
+  });
+  writeFileSync(sp.progressHtml, html, "utf8");
+  return sp.progressHtml;
+}
 
 function writeFileIfAbsent(path: string, contents: string): void {
   if (!existsSync(path)) writeFileSync(path, contents, "utf8");

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.0
+
+Add keyless web access so the gather step works on stock pi.
+
+- New tools **`WebSearch`** (DuckDuckGo HTML, no API key) and **`WebFetch`**
+  (JSON/text verbatim, HTML reduced to readable text). The pi host ships no web
+  tools, but `autoresearch-vkf-knowledge-gather` assumed they existed — the agent
+  reported it had no web search. These supply the named tools the skill already
+  references, against the free literature APIs (arXiv, OpenAlex, Crossref,
+  Semantic Scholar). No session required; no setup or keys.
+- Tool names match Claude-Code casing so `pi-ai`'s tool-name table keeps prompt
+  caching aligned. `WebSearch` degrades gracefully to a WebFetch-an-API hint when
+  the search backend rate-limits or changes layout.
+
+Make the browser progress dashboard automatic and live.
+
+- `progress.html` is now written on `init_research` (so it exists from iteration
+  zero) and refreshed after every `remember_claim`, `verify_claim`, and
+  `vkf_log_experiment`. Previously it was only written when the agent explicitly
+  called `export_dashboard`, which most runs never did — so the dashboard was
+  effectively never created and never updated during a run.
+- The page already meta-refreshes itself, so an open browser tab now tracks the
+  loop live with no manual step. `export_dashboard` is now for the heavier
+  vkf-CLI idea-lineage graph (`dashboard.html`), a custom refresh interval, or
+  opening the page in a browser.
+
 ## 0.5.2
 
 Prefixed all skill names with `autoresearch-vkf-` to avoid namespace conflicts
