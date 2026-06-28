@@ -39,8 +39,7 @@ pi-autoresearch-vkf:
                   → avoid repeated failures → improve future search
 ```
 
-The novelty isn't "autoresearch + RAG." It's that the agent's scientific memory is
-**verifiable, lifecycle-managed, and auditable**.
+Agents with scientific memory that is **verifiable, lifecycle-managed, and auditable**.
 
 ## Install
 
