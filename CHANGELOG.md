@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.6
+
+Avoid pi's reserved keybindings.
+
+- **Default shortcuts moved to alt+.** The fullscreen dashboard and open-in-browser
+  shortcuts now default to **alt+g** and **alt+o** (were `ctrl+g`/`ctrl+o`), which
+  pi reserves. Override with `PI_AUTORESEARCH_SHORTCUT` /
+  `PI_AUTORESEARCH_OPEN_SHORTCUT` as before.
+
 ## 0.8.5
 
 Make novelty structural and reserve budget for high-altitude bets — so the loop
