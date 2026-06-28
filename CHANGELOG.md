@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.8
+
+- **Fix: fullscreen overlay (alt+g) crash on narrow terminals.** The overlay
+  rendered un-truncated lines, so a long goal/description/claim title wider than
+  the terminal crashed pi (`Rendered line … exceeds terminal width`). Each line is
+  now clipped to the viewport width with the ANSI-aware `truncateToWidth`.
+
 ## 0.8.7
 
 Nicer widget: color and run numbers.
