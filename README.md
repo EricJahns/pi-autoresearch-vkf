@@ -185,8 +185,10 @@ novelty), then synthesis unlocks the combo.
 Three live views, in increasing detail:
 
 - **Widget** (always on, above the editor) — run/kept/discarded counts, best
-  metric, memory tally, and a table of the recent runs (commit · every metric ·
-  status · change); refreshes after every tool call.
+  metric, memory tally, the shortcut hints, and a color-coded table of the recent
+  runs (# · commit · every metric · status · change), newest at the bottom;
+  refreshes after every tool call. (Colors follow your terminal theme; set
+  `NO_COLOR` for plain text.)
 - **Fullscreen overlay** — press **Alt+G** (or call `research_status`) for the
   full experiment list, memory lifecycle, and verified claims.
 - **Browser dashboards** — press **Alt+O** (or run `/research-open`). `export_dashboard`
