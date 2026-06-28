@@ -1,5 +1,5 @@
 ---
-name: knowledge-gather
+name: autoresearch-vkf-knowledge-gather
 description: Gather frontier knowledge relevant to a research goal — search papers, repos, docs, and benchmarks for candidate techniques. Use as the discovery step of an autoresearch loop, before extracting claims. Collects candidate knowledge; it does not invent ideas or run experiments.
 ---
 
@@ -63,5 +63,5 @@ For each candidate, capture enough to become a claim later:
 - **Look for contradictions and gaps** between sources — they're the richest
   seeds for novel hypotheses later.
 
-Hand the collected candidates to **claim-extract**, which writes them into memory
+Hand the collected candidates to **autoresearch-vkf-claim-extract**, which writes them into memory
 with `remember_claim`.

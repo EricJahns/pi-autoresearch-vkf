@@ -51,7 +51,7 @@ pi install file:/path/to/pi-autoresearch-vkf
 ### Knowledge sources (how ingestion works)
 
 The extension stores and reasons over knowledge; it does **not** fetch papers
-itself. Gathering is done by the host agent through the `knowledge-gather` skill,
+itself. Gathering is done by the host agent through the `autoresearch-vkf-knowledge-gather` skill,
 using the agent's built-in **`WebSearch` + `WebFetch`** against free, openly
 accessible databases — no API keys, no paid services, no MCP setup:
 
@@ -86,12 +86,12 @@ goal ─► recall_memory ─► gather literature ─► remember_claim (candid
    │                                              │
    │                                         verify_claim ──► trusted claims
    ▼                                              │
- hypothesis-loop:  recall ─► pick idea ─► vkf_run_experiment ─► vkf_log_experiment
+ autoresearch-vkf-hypothesis-loop:  recall ─► pick idea ─► vkf_run_experiment ─► vkf_log_experiment
    │                                                            │
    │                                  writes experiment card back to memory,
    │                                  updates the claim's belief & lifecycle
    ▼
- research-report   (paper → claim → hypothesis → patch → metric Δ → memory update)
+ autoresearch-vkf-research-report   (paper → claim → hypothesis → patch → metric Δ → memory update)
 ```
 
 ### One self-contained workspace
@@ -146,14 +146,14 @@ verifier — is the defense against **memory poisoning**.
 | Skill | Role |
 |-------|------|
 | `autoresearch-vkf` | Orchestrator / spine — the entry point. |
-| `knowledge-gather` | Find candidate techniques via WebSearch/WebFetch (arXiv / Semantic Scholar / OpenAlex / GitHub). |
-| `claim-extract` | Distill sources into reusable claim cards. |
-| `claim-verify` | Check citations & codebase fit — the trust layer. |
-| `contradiction-miner` | Turn tensions in memory into novel hypotheses. |
-| `cross-domain-transfer` | Import a mechanism from another field. |
-| `idea-tournament` | Multi-perspective debate to pick the 2–3 ideas worth testing. |
-| `hypothesis-loop` | Pick the next idea and run the smallest falsifying experiment. |
-| `research-report` | The auditable lineage report. |
+| `autoresearch-vkf-knowledge-gather` | Find candidate techniques via WebSearch/WebFetch (arXiv / Semantic Scholar / OpenAlex / GitHub). |
+| `autoresearch-vkf-claim-extract` | Distill sources into reusable claim cards. |
+| `autoresearch-vkf-claim-verify` | Check citations & codebase fit — the trust layer. |
+| `autoresearch-vkf-contradiction-miner` | Turn tensions in memory into novel hypotheses. |
+| `autoresearch-vkf-cross-domain-transfer` | Import a mechanism from another field. |
+| `autoresearch-vkf-idea-tournament` | Multi-perspective debate to pick the 2–3 ideas worth testing. |
+| `autoresearch-vkf-hypothesis-loop` | Pick the next idea and run the smallest falsifying experiment. |
+| `autoresearch-vkf-research-report` | The auditable lineage report. |
 
 ### The `.autoresearch-vkf/` workspace
 
@@ -282,7 +282,7 @@ Verify what will ship first with `npm pack --dry-run`.
 
 All four planned phases are in: the lean MVP (Phase 1), the **novelty scorer**
 (Phase 2), the **hypothesis-synthesis layer** (Phase 3 — `find_contradictions`,
-`find_transfers`, `idea-tournament`), and **global cross-project memory + the
+`find_transfers`, `autoresearch-vkf-idea-tournament`), and **global cross-project memory + the
 benchmark** (Phase 4).
 
 Possible next steps:

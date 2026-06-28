@@ -1,5 +1,5 @@
 ---
-name: cross-domain-transfer
+name: autoresearch-vkf-cross-domain-transfer
 description: Generate novel ideas by importing a mechanism from another field into the current problem. Use when you want surprising analogies that keyword search misses — search by mechanism, not keywords.
 ---
 
@@ -47,11 +47,11 @@ Record the best candidate with `remember_claim`:
 - `failure_modes` — note where the analogy might break (the assumptions the source
   domain has that yours doesn't).
 
-Then let `claim-verify` and `score_ideas` decide if it earns an experiment.
+Then let `autoresearch-vkf-claim-verify` and `score_ideas` decide if it earns an experiment.
 
 ## Discipline
 
 - **Require a mechanistic reason for transfer**, not just surface similarity. "Both
   use matrices" is not a transfer.
 - If you gathered claims only from your own domain, there's nothing to transfer
-  *from* — use `knowledge-gather` to pull in adjacent fields first.
+  *from* — use `autoresearch-vkf-knowledge-gather` to pull in adjacent fields first.

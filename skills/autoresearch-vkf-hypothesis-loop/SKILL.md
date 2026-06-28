@@ -1,5 +1,5 @@
 ---
-name: hypothesis-loop
+name: autoresearch-vkf-hypothesis-loop
 description: The core experiment loop — recall memory, pick the highest-value sufficiently-novel idea, run the smallest falsifying experiment, and write the result back to memory. Use to drive iterations of an autoresearch loop after claims have been gathered and verified.
 ---
 
@@ -54,4 +54,4 @@ ideas deliberately and you never repeat settled work.
 - **One variable at a time** so the result attributes cleanly to the hypothesis.
 
 When you've made meaningful progress or exhausted promising ideas, hand to
-**research-report**.
+**autoresearch-vkf-research-report**.

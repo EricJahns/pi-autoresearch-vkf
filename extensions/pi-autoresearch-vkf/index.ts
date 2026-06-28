@@ -144,7 +144,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           `Memory bundle: ${memoryPaths(root).dir} ${fresh ? "(new)" : "(existing)"} — profile ${config.memoryProfile}.`,
           `Optimizing ${config.metricName} (${config.direction} is better).`,
           "",
-          "Next: gather literature (knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → vkf_run_experiment → vkf_log_experiment.",
+          "Next: gather literature (autoresearch-vkf-knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → vkf_run_experiment → vkf_log_experiment.",
         ].join("\n"),
         { created: true },
       );
@@ -491,7 +491,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
       if (ideas.length === 0) {
         return textResult(
-          "No untested ideas to score. Gather literature (knowledge-gather) and remember_claim some candidates first.",
+          "No untested ideas to score. Gather literature (autoresearch-vkf-knowledge-gather) and remember_claim some candidates first.",
           { ranked: 0 },
         );
       }

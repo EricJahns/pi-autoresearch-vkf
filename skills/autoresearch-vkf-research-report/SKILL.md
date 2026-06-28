@@ -1,5 +1,5 @@
 ---
-name: research-report
+name: autoresearch-vkf-research-report
 description: Produce the autoresearch report with full idea lineage — paper → claim → hypothesis → patch → metric change → status → memory update. Use to summarize an autoresearch run into an auditable, human-readable report at .autoresearch-vkf/session/report.md.
 ---
 

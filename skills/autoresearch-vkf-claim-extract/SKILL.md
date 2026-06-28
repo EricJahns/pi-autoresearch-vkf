@@ -1,6 +1,6 @@
 ---
-name: claim-extract
-description: Convert gathered literature into structured, reusable VKF claim cards (research atoms). Use after knowledge-gather to stage candidate claims in memory with remember_claim. Turns noisy papers into small, checkable, reusable assertions.
+name: autoresearch-vkf-claim-extract
+description: Convert gathered literature into structured, reusable VKF claim cards (research atoms). Use after autoresearch-vkf-knowledge-gather to stage candidate claims in memory with remember_claim. Turns noisy papers into small, checkable, reusable assertions.
 ---
 
 # Extract claims from literature
@@ -19,7 +19,7 @@ Call `remember_claim` with:
   "Replacing static gradient clipping with EMA-based adaptive clipping lowers
   early-training validation loss for small transformers."
 - **mechanism** — *why* it should work. This is the most valuable field: it's
-  what later lets the hypothesis-loop transfer the idea across domains.
+  what later lets the autoresearch-vkf-hypothesis-loop transfer the idea across domains.
 - **context** — where it applies (architecture, scale, dataset regime).
 - **implementation_recipe** — concretely how to apply it in this codebase.
 - **failure_modes** — known/suspected ways it breaks or interacts badly.
@@ -41,4 +41,4 @@ Call `remember_claim` with:
   theoretical, or anecdotal in the confidence/reliability you assign.
 
 Everything you stage here is a **candidate** (status `draft`) with a transaction
-record — nothing is trusted yet. Hand off to **claim-verify**.
+record — nothing is trusted yet. Hand off to **autoresearch-vkf-claim-verify**.

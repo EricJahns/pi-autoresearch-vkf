@@ -1,6 +1,6 @@
 ---
-name: claim-verify
-description: Verify staged candidate claims before the loop builds on them — check that the cited source really says it, classify the evidence, and confirm codebase relevance. Use after claim-extract to promote or downgrade claims with verify_claim. This is the trust layer that prevents memory poisoning.
+name: autoresearch-vkf-claim-verify
+description: Verify staged candidate claims before the loop builds on them — check that the cited source really says it, classify the evidence, and confirm codebase relevance. Use after autoresearch-vkf-claim-extract to promote or downgrade claims with verify_claim. This is the trust layer that prevents memory poisoning.
 ---
 
 # Verify claims
@@ -47,4 +47,4 @@ bundle stays governed.
 - A claim's truth in a paper ≠ its usefulness for our goal. Keep those separate.
 
 When the trusted set is healthy, hand back to **autoresearch-vkf** for the
-**hypothesis-loop**.
+**autoresearch-vkf-hypothesis-loop**.

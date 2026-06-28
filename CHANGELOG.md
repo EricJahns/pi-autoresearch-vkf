@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2
+
+Prefixed all skill names with `autoresearch-vkf-` to avoid namespace conflicts
+with other tooling. Renamed `knowledge-gather`, `claim-extract`, `claim-verify`,
+`contradiction-miner`, `cross-domain-transfer`, `idea-tournament`,
+`hypothesis-loop`, and `research-report`; all cross-references in the skills,
+the README, and the extension were updated accordingly. No behavior change.
+
+
 ## 0.5.1
 
 Fix tool/skill name collisions with pi-autoresearch (both can now load together).

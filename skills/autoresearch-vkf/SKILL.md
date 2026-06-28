@@ -51,23 +51,23 @@ transaction record — promotion is an explicit, audited step.
    gathering anything. If prior runs already learned something, build on it and
    skip rediscovery.
 
-4. **Gather literature** → use the **knowledge-gather** skill to find candidate
+4. **Gather literature** → use the **autoresearch-vkf-knowledge-gather** skill to find candidate
    techniques (via `WebSearch`/`WebFetch` against free databases — arXiv, Semantic
-   Scholar, OpenAlex), then **claim-extract** to turn them into structured claims
-   via `remember_claim`. Then **claim-verify** to check citations and codebase fit.
+   Scholar, OpenAlex), then **autoresearch-vkf-claim-extract** to turn them into structured claims
+   via `remember_claim`. Then **autoresearch-vkf-claim-verify** to check citations and codebase fit.
 
 4b. **Synthesize new ideas** (optional but high-value) → mine memory for novelty
-   instead of only retrieving it: **contradiction-miner** (tensions →
-   hypotheses), **cross-domain-transfer** (import a mechanism from another field).
-   When many ideas compete for budget, run the **idea-tournament** skill to pick
+   instead of only retrieving it: **autoresearch-vkf-contradiction-miner** (tensions →
+   hypotheses), **autoresearch-vkf-cross-domain-transfer** (import a mechanism from another field).
+   When many ideas compete for budget, run the **autoresearch-vkf-idea-tournament** skill to pick
    the 2–3 worth testing.
 
-5. **Loop** → use the **hypothesis-loop** skill: `recall_memory` → pick the
+5. **Loop** → use the **autoresearch-vkf-hypothesis-loop** skill: `recall_memory` → pick the
    highest-value, sufficiently-novel idea → implement the smallest falsifying
    change → `vkf_run_experiment` → `vkf_log_experiment` → repeat. Keep wins, revert
    regressions; either way the result is now in memory.
 
-6. **Report** → use the **research-report** skill to produce the lineage report
+6. **Report** → use the **autoresearch-vkf-research-report** skill to produce the lineage report
    (paper → claim → hypothesis → patch → metric Δ → status → memory update).
 
 Keep `.autoresearch-vkf/session/prompt.md` current so a fresh agent can continue. The loop is

@@ -1,5 +1,5 @@
 ---
-name: contradiction-miner
+name: autoresearch-vkf-contradiction-miner
 description: Generate novel hypotheses from tensions already in memory — conflicting claims, ideas that won in one place and lost in another, and different mechanisms aimed at the same goal. Use when the loop needs fresh, non-obvious ideas rather than more literature.
 ---
 
@@ -44,8 +44,8 @@ Record it with `remember_claim`, setting:
 - a `mechanism` (required — a hypothesis with no mechanism is just noise),
 - an honest `confidence` (these are speculative; start low–medium).
 
-It enters memory as a **candidate** like any other idea — then `claim-verify` and
-the `hypothesis-loop` (via `score_ideas`) decide whether it's worth testing.
+It enters memory as a **candidate** like any other idea — then `autoresearch-vkf-claim-verify` and
+the `autoresearch-vkf-hypothesis-loop` (via `score_ideas`) decide whether it's worth testing.
 
 ## Discipline
 

@@ -1,5 +1,5 @@
 ---
-name: idea-tournament
+name: autoresearch-vkf-idea-tournament
 description: Run a structured multi-perspective tournament over candidate ideas to pick the 2-3 worth testing. Use when there are many candidate hypotheses competing for limited experiment budget.
 ---
 
@@ -7,7 +7,7 @@ description: Run a structured multi-perspective tournament over candidate ideas 
 
 When many ideas compete for a limited experiment budget, don't just take the top
 of one ranking. Run a tournament: judge each idea from several perspectives, then
-advance only the best 2–3 to the `hypothesis-loop`.
+advance only the best 2–3 to the `autoresearch-vkf-hypothesis-loop`.
 
 ## Assemble the field
 
@@ -45,7 +45,7 @@ the numbers miss — especially the Skeptic's failure-mode and gaming checks.
   `verify_claim`) so the tournament's reasoning is remembered and they aren't
   re-litigated next round.
 
-Hand the 2–3 winners to the **hypothesis-loop**.
+Hand the 2–3 winners to the **autoresearch-vkf-hypothesis-loop**.
 
 ## Discipline
 
