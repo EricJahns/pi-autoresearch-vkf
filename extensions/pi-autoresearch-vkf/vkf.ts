@@ -162,6 +162,18 @@ export function graph(memoryDir: string): GraphResult {
   }
 }
 
+/**
+ * Run `vkf html <dir> --out <path>` to write a self-contained interactive graph
+ * visualizer of the memory bundle (the idea-lineage graph).
+ */
+export function html(memoryDir: string, outPath: string, title?: string): { available: boolean; ok: boolean; out: string; raw: string } {
+  const args = ["html", memoryDir, "--out", outPath];
+  if (title) args.push("--title", title);
+  const res = run(args);
+  if (res.unavailable) return { available: false, ok: false, out: outPath, raw: res.stderr };
+  return { available: true, ok: res.ok, out: outPath, raw: res.stdout || res.stderr };
+}
+
 /** Run `vkf freshness <dir>` (JSON to stdout). */
 export function freshness(memoryDir: string): { available: boolean; report: unknown; raw: string } {
   const res = run(["freshness", memoryDir]);

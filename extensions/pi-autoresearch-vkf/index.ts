@@ -28,6 +28,7 @@ import {
   findCard,
   isTrustedForHypotheses,
   listCards,
+  MEMORY_STATES,
   scaffoldMemoryBundle,
   transitionCard,
   updateBelief,
@@ -49,6 +50,7 @@ import {
 } from "./experiments.ts";
 import { appendLog } from "./jsonl.ts";
 import { parseMetrics } from "./metrics.ts";
+import { renderProgressHtml, type ProgressExperiment } from "./progress_html.ts";
 import { rankIdeas, type IdeaInput } from "./scoring.ts";
 import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
 import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, sessionPaths } from "./paths.ts";
@@ -837,6 +839,91 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       return textResult(
         [`Promoted ${params.id} (${state}) to global memory at ${gRoot}/.research-memory.`, gv].join("\n"),
         { promoted: true },
+      );
+    },
+  });
+
+  // ── export_dashboard ─────────────────────────────────────────────────────────
+  const ExportParams = Type.Object({
+    refresh_seconds: Type.Optional(Type.Number({ description: "Auto-refresh interval for the progress page, in seconds (0 disables). Default 5 — handy to keep a browser tab live while the loop runs." })),
+    open: Type.Optional(Type.Boolean({ description: "Best-effort open the progress page in the default browser after writing. Default false." })),
+  });
+
+  pi.registerTool({
+    name: "export_dashboard",
+    label: "Export dashboard",
+    description:
+      "Write browser dashboards for the run: a self-contained progress page (.auto/progress.html — metric-over-time chart, experiment timeline, memory lifecycle) and, via the vkf CLI, the interactive idea-lineage graph (.auto/dashboard.html — paper → claim → experiment). Re-run any time to refresh; open progress.html in a browser to watch progress as it goes.",
+    parameters: ExportParams,
+    async execute(_id, params: Static<typeof ExportParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ progress: string; lineage?: string }>> {
+      const root = resolveRoot(ctx);
+      const sp = sessionPaths(root);
+      requireSession(root);
+      const config = readConfig(sp.config)!;
+
+      // Progress page (self-contained, no CLI needed).
+      const experiments: ProgressExperiment[] = readExperiments(sp.experiments).map((e) => ({
+        id: e.id,
+        description: e.description,
+        value: e.value,
+        outcome: e.outcome,
+        kept: e.kept,
+        claim_id: e.claim_id,
+        ts: e.ts,
+      }));
+      const memory: Record<string, number> = Object.fromEntries(MEMORY_STATES.map((s) => [s, 0]));
+      for (const c of listCards(root, { type: "claim" })) {
+        const st = c.meta["memory_state"] as MemoryState | undefined;
+        if (st && st in memory) memory[st]! += 1;
+      }
+      const claims = listCards(root, { bucket: "verified", type: "claim" })
+        .slice(0, 12)
+        .map((c) => ({
+          title: String(c.meta["title"] ?? c.meta["id"]),
+          confidence: String(c.meta["confidence"] ?? "—"),
+          state: String(c.meta["memory_state"] ?? "—"),
+        }));
+
+      const progressHtml = renderProgressHtml({
+        name: config.name,
+        goal: config.goal,
+        metricName: config.metricName,
+        direction: config.direction,
+        baseline: config.baseline,
+        experiments,
+        memory,
+        claims,
+        generatedAt: new Date().toISOString(),
+        refreshSeconds: params.refresh_seconds,
+      });
+      writeFileSync(sp.progressHtml, progressHtml, "utf8");
+
+      // Lineage graph via the vkf CLI (best-effort).
+      const lineage = vkf.html(`${root}/.research-memory`, sp.dashboardHtml, `Research memory — ${config.name}`);
+      const lineageLine = lineage.available
+        ? lineage.ok
+          ? `Lineage graph: ${sp.dashboardHtml}`
+          : `Lineage graph skipped (vkf html failed: ${lineage.raw.trim().split("\n")[0] ?? "unknown error"}).`
+        : "Lineage graph skipped (vkf CLI not found — install it for the idea-lineage view).";
+
+      if (params.open) {
+        const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+        try {
+          await pi.exec("bash", ["-lc", `${opener} ${JSON.stringify(sp.progressHtml)} >/dev/null 2>&1 || true`], { cwd: root });
+        } catch {
+          // best-effort only
+        }
+      }
+
+      appendLog(sp.log, { event: "note", note: "export_dashboard" });
+      return textResult(
+        [
+          `Progress dashboard: ${sp.progressHtml}`,
+          lineageLine,
+          "",
+          `Open the progress page in a browser to watch the run live:  open ${sp.progressHtml}`,
+        ].join("\n"),
+        { progress: sp.progressHtml, lineage: lineage.ok ? sp.dashboardHtml : undefined },
       );
     },
   });

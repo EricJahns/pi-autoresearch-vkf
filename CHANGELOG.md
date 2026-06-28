@@ -20,6 +20,14 @@ Phase 4: global cross-project memory + a benchmark vs standard autoresearch.
 - Across scenarios, ours reaches the (synthesis-only) optimum 100% vs 0%, with
   ~3× the best improvement, zero repeats, and fewer dead-end retries.
 
+Dashboards:
+- New `export_dashboard` tool writes two self-contained browser pages to `.auto/`:
+  `progress.html` (inline-SVG metric-over-time chart, experiment timeline, memory
+  lifecycle; auto-refreshing) and `dashboard.html` (the interactive idea-lineage
+  graph via `vkf html`).
+- `progress_html.ts` is a pure, unit-tested renderer (no JS/asset deps); `vkf.ts`
+  gains an `html()` bridge wrapper.
+
 Knowledge ingestion:
 - `knowledge-gather` uses the agent's built-in `WebSearch` / `WebFetch` against
   free, openly accessible databases — arXiv, Semantic Scholar, OpenAlex, Crossref

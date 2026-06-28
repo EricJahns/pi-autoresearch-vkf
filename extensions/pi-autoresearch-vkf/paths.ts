@@ -40,6 +40,8 @@ export function sessionPaths(root: string) {
     measure: join(dir, "measure.sh"),
     checks: join(dir, "checks.sh"),
     report: join(dir, "report.md"),
+    progressHtml: join(dir, "progress.html"),
+    dashboardHtml: join(dir, "dashboard.html"),
   } as const;
 }
 

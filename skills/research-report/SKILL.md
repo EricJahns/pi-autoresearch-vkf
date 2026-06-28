@@ -11,6 +11,9 @@ learned. Make that lineage explicit.
 
 ## Gather the material
 
+- `export_dashboard` to write the browser views — `progress.html` (metric chart +
+  timeline) and `dashboard.html` (the idea-lineage graph) — and link them from the
+  report.
 - `research_status` for the session experiments and memory lifecycle counts.
 - `recall_memory` for the trusted claims, candidates, and negatives.
 - The memory bundle itself (`.research-memory/`): paper, claim, and experiment
