@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import {
   STATE_MAP,
+  beliefFromEvidence,
   buildClaimCard,
   buildExperimentCard,
   buildPaperCard,
@@ -41,6 +42,16 @@ test("updateBelief moves and clamps", () => {
   assert.ok(updateBelief(0.5, "loss") < 0.5);
   assert.ok(updateBelief(0.95, "win") <= 0.98);
   assert.ok(updateBelief(0.05, "loss") >= 0.02);
+});
+
+test("beliefFromEvidence is a clamped Beta posterior mean", () => {
+  assert.equal(beliefFromEvidence(0, 0), 0.5); // no evidence → prior
+  assert.equal(beliefFromEvidence(0, 0, 0.3), 0.3); // honors prior when no evidence
+  assert.equal(beliefFromEvidence(2, 1), (2 + 1) / (2 + 1 + 2)); // 0.6
+  assert.ok(beliefFromEvidence(5, 0) > beliefFromEvidence(2, 0)); // more wins → higher
+  assert.ok(beliefFromEvidence(0, 5) < 0.34); // losses pull it low
+  assert.ok(beliefFromEvidence(100, 0) <= 0.98); // clamped
+  assert.ok(beliefFromEvidence(0, 100) >= 0.02);
 });
 
 test("slugify produces VKF-id-safe slugs", () => {
@@ -130,4 +141,34 @@ test("lifecycle: write, transition across buckets, transaction", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("experiment cards carry a profile-2 reproduction block and tree edges", () => {
+  const exp = buildExperimentCard({
+    title: "try adagc",
+    hypothesis: "lowers loss",
+    claim_id: "claim:adagc",
+    parent_id: "experiment:prev_xyz",
+    node_kind: "improve",
+    metric_name: "loss",
+    baseline: 1.0,
+    value: 0.9,
+    outcome: "win",
+    reproduction: { command: "bash .auto/measure.sh", metric_name: "loss", value: 0.9 },
+    next_suggestions: ["sweep the EMA decay", "try on the larger model"],
+    owner: "agent:autoresearch",
+  });
+  const { data, body } = parseFrontmatter(exp.content);
+  // Tree + claim edges feed `vkf graph`.
+  assert.deepEqual(data.depends_on, ["claim:adagc", "experiment:prev_xyz"]);
+  assert.equal(data.parent, "experiment:prev_xyz");
+  assert.equal(data.node_kind, "improve");
+  // Profile-2 reproduction block (nested object).
+  assert.equal(data.verification.method, "command");
+  assert.equal(data.verification.command, "bash .auto/measure.sh");
+  assert.equal(data.verification.expected.metric, "loss");
+  assert.equal(data.verification.expected.value, 0.9);
+  // Structured feedback lands in the body.
+  assert.match(body, /## Next steps/);
+  assert.match(body, /sweep the EMA decay/);
 });

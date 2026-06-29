@@ -137,13 +137,34 @@ export function confidenceLabel(value: number): "low" | "medium" | "high" {
   return "high";
 }
 
-/** Update a belief given an experiment outcome. Clamped to (0,1). */
+/** Update a belief given an experiment outcome. Clamped to (0,1).
+ *
+ * Kept for callers that only have the previous scalar; prefer
+ * {@link beliefFromEvidence} when win/loss tallies are available — it accumulates
+ * evidence instead of letting the latest result overwrite the history. */
 export function updateBelief(
   current: number,
   outcome: "win" | "loss" | "inconclusive",
 ): number {
   const delta = outcome === "win" ? 0.15 : outcome === "loss" ? -0.2 : -0.02;
   return Math.min(0.98, Math.max(0.02, current + delta));
+}
+
+/**
+ * Belief from accumulated evidence: the mean of a Beta(wins+1, losses+1)
+ * posterior, `(wins + 1) / (wins + losses + 2)`, clamped to (0.02, 0.98).
+ *
+ * This is the principled replacement for nudging a scalar by a fixed delta: two
+ * wins then a loss lands at a calibrated 0.6, not wherever the last ±delta left
+ * it, and the value is reproducible from the recorded tally. Inconclusive runs
+ * carry no evidence, so they don't move it. `prior` (default 0.5) only matters
+ * before any evidence exists.
+ */
+export function beliefFromEvidence(wins: number, losses: number, prior = 0.5): number {
+  const w = Math.max(0, Math.floor(wins));
+  const l = Math.max(0, Math.floor(losses));
+  if (w + l === 0) return Math.min(0.98, Math.max(0.02, prior));
+  return Math.min(0.98, Math.max(0.02, (w + 1) / (w + l + 2)));
 }
 
 // ── identifiers ────────────────────────────────────────────────────────────────
@@ -381,6 +402,10 @@ export interface ExperimentInput {
   hypothesis: string;
   /** Claim this experiment tested (e.g. "claim:adagc"). */
   claim_id?: string;
+  /** Experiment node this one branched from in the search tree (a VKF id). */
+  parent_id?: string;
+  /** What kind of move this node is, for the lineage graph. */
+  node_kind?: string;
   metric_name: string;
   baseline?: number;
   value: number;
@@ -388,6 +413,14 @@ export interface ExperimentInput {
   conditions?: string;
   notes?: string;
   commit?: string;
+  /**
+   * Reproduction recipe for a profile-2 `verification` block: the command that
+   * reproduces this result and the metric value it should print. Lets
+   * `vkf validate --profile 2` confirm the experiment is replayable.
+   */
+  reproduction?: { command: string; metric_name?: string; value?: number; tolerance?: number };
+  /** Structured next-step suggestions (RD-Agent-style feedback). */
+  next_suggestions?: string[];
   /** Tags inherited from the tested claim (for coverage). */
   lever?: Lever;
   altitude?: Altitude;
@@ -414,18 +447,38 @@ export function buildExperimentCard(input: ExperimentInput): {
         ? "contradicted_by_local_experiment"
         : "verified_by_local_experiment",
     owner: input.owner,
-    dependsOn: input.claim_id ? [input.claim_id] : [],
+    // Depend on the tested claim AND the parent node, so `vkf graph` renders the
+    // actual search tree (paper → claim → experiment → experiment …).
+    dependsOn: [input.claim_id, input.parent_id].filter((x): x is string => !!x),
   });
   meta["metric_name"] = input.metric_name;
   if (input.baseline !== undefined) meta["baseline"] = input.baseline;
   meta["value"] = input.value;
   meta["outcome"] = input.outcome;
   if (input.commit) meta["commit"] = input.commit;
+  if (input.parent_id) meta["parent"] = input.parent_id;
+  if (input.node_kind) meta["node_kind"] = input.node_kind;
   if (input.lever) meta["lever"] = input.lever;
   if (input.altitude) meta["altitude"] = input.altitude;
   const delta =
     input.baseline !== undefined ? Number((input.value - input.baseline).toFixed(6)) : undefined;
   if (delta !== undefined) meta["delta"] = delta;
+
+  // Profile-2 reproduction block. VKF reserves `verification` for a reproducibility
+  // record (command + expected result); attaching it lets the bundle validate at
+  // the strict `verified` profile rather than only the governed profile 1.
+  if (input.reproduction) {
+    const expected: Record<string, YamlValue> = {
+      metric: input.reproduction.metric_name ?? input.metric_name,
+      value: input.reproduction.value ?? input.value,
+    };
+    if (input.reproduction.tolerance !== undefined) expected["tolerance"] = input.reproduction.tolerance;
+    meta["verification"] = {
+      method: "command",
+      command: input.reproduction.command,
+      expected,
+    } as YamlValue;
+  }
 
   const body = [
     `# ${input.title}`,
@@ -448,6 +501,9 @@ export function buildExperimentCard(input: ExperimentInput): {
     "",
     input.conditions ? "## Conditions\n\n" + input.conditions + "\n" : "",
     input.notes ? "## Notes\n\n" + input.notes + "\n" : "",
+    input.next_suggestions && input.next_suggestions.length
+      ? "## Next steps\n\n" + input.next_suggestions.map((s) => `- ${s}`).join("\n") + "\n"
+      : "",
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -514,7 +570,13 @@ export function transitionCard(
   root: string,
   id: string,
   state: MemoryState,
-  opts: { verification?: Verification; confidence?: number; conflictsWith?: string } = {},
+  opts: {
+    verification?: Verification;
+    confidence?: number;
+    conflictsWith?: string;
+    /** Accumulated experiment evidence backing the belief, persisted on the card. */
+    evidence?: { wins: number; losses: number };
+  } = {},
 ): Card {
   const card = findCard(root, id);
   if (!card) throw new Error(`no card with id "${id}" in the memory bundle`);
@@ -526,6 +588,10 @@ export function transitionCard(
   if (opts.confidence !== undefined) {
     card.meta["belief"] = opts.confidence;
     card.meta["confidence"] = confidenceLabel(opts.confidence);
+  }
+  if (opts.evidence) {
+    card.meta["evidence_wins"] = opts.evidence.wins;
+    card.meta["evidence_losses"] = opts.evidence.losses;
   }
   if (status === "active" || status === "verified") card.meta["last_verified"] = today();
   if (opts.conflictsWith) {

@@ -24,6 +24,7 @@ import { Type, type Static } from "typebox";
 
 import {
   ALTITUDES,
+  beliefFromEvidence,
   buildClaimCard,
   buildExperimentCard,
   buildPaperCard,
@@ -35,7 +36,6 @@ import {
   MEMORY_STATES,
   scaffoldMemoryBundle,
   transitionCard,
-  updateBelief,
   writeCard,
   writeTransaction,
   type MemoryState,
@@ -46,16 +46,20 @@ import { buildFullscreenLines } from "./dashboard.ts";
 import {
   appendExperiment,
   deriveOutcome,
+  nodeBaseline,
   readExperiments,
   summarize,
   writeExperiments,
   type Experiment,
+  type NodeKind,
   type Outcome,
 } from "./experiments.ts";
 import { appendLog } from "./jsonl.ts";
 import { parseMetrics } from "./metrics.ts";
-import { renderProgressHtml, type ProgressExperiment } from "./progress_html.ts";
+import { buildDashboardData } from "./progress_data.ts";
+import { renderDashboardHtml } from "./progress_html.ts";
 import { bucketKey, rankIdeas, selectBalanced, type IdeaInput } from "./scoring.ts";
+import { bestNode, depths, selectExpansion } from "./tree.ts";
 import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
 import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, memoryPaths, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
@@ -64,6 +68,9 @@ import { loadShortcuts } from "./shortcuts.ts";
 import * as vkf from "./vkf.ts";
 
 const MAX_OUTPUT_CHARS = 16_000;
+
+/** Package version, surfaced in the dashboard footer. Keep in sync with package.json. */
+const VERSION = "0.9.0";
 
 const truncate = (s: string): string =>
   s.length <= MAX_OUTPUT_CHARS
@@ -87,6 +94,36 @@ function validationNote(root: string, profile: number): string {
   const errs = (report.issues ?? []).filter((i) => i.level === "ERROR").slice(0, 5);
   const lines = errs.map((e) => `   - ${e.path}: ${e.message}`);
   return `✗ vkf validate found ${report.summary?.ERROR ?? "?"} error(s):\n${lines.join("\n")}`;
+}
+
+/**
+ * Ids of memory cards that should be treated as stale: those whose `valid_until`
+ * is in the past, plus anything `vkf freshness` flags. Used to down-weight stale
+ * knowledge in scoring so it doesn't steer the loop on equal footing.
+ */
+function staleIdSet(root: string): Set<string> {
+  const ids = new Set<string>();
+  const today = new Date().toISOString().slice(0, 10);
+  for (const c of listCards(root)) {
+    const vu = c.meta["valid_until"];
+    if (typeof vu === "string" && vu && vu < today) ids.add(String(c.meta["id"]));
+  }
+  const fresh = vkf.freshness(memoryPaths(root).dir);
+  if (fresh.available && fresh.report && typeof fresh.report === "object") {
+    const stale = (fresh.report as { stale?: unknown[] }).stale;
+    if (Array.isArray(stale)) {
+      for (const s of stale) {
+        const id =
+          typeof s === "string"
+            ? s
+            : s && typeof s === "object"
+              ? String((s as { id?: unknown }).id ?? "")
+              : "";
+        if (id) ids.add(id);
+      }
+    }
+  }
+  return ids;
 }
 
 export default function autoresearchExtension(pi: ExtensionAPI): void {
@@ -493,6 +530,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         const key = bucketKey(optStr(e.meta["lever"]), optStr(e.meta["altitude"]));
         bucketCounts[key] = (bucketCounts[key] ?? 0) + 1;
       }
+      const staleIds = staleIdSet(root);
 
       const ideas: IdeaInput[] = claims
         .filter((c) => untestedStates.has(c.meta["memory_state"] as MemoryState))
@@ -511,6 +549,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           implementation_cost: num(c.meta["implementation_cost"]),
           lever: optStr(c.meta["lever"]),
           altitude: optStr(c.meta["altitude"]),
+          stale: staleIds.has(str(c.meta["id"])),
         }));
 
       if (ideas.length === 0) {
@@ -565,6 +604,118 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           "Honor the explore quota across the run — a reserved explore pick that opens new ground beats another tweak to a saturated bucket.",
         ].join("\n"),
         { ranked: ranked.length, top: ranked[0]?.id },
+      );
+    },
+  });
+
+  // ── plan_next_step ───────────────────────────────────────────────────────────
+  const PlanParams = Type.Object({
+    query: Type.Optional(Type.String({ description: "Restrict to ideas whose text matches this focus." })),
+    k: Type.Optional(Type.Number({ description: "How many expansion candidates to return. Default 4." })),
+    include_candidates: Type.Optional(Type.Boolean({ description: "Consider unverified candidates too, not just source_verified+ claims. Default true." })),
+  });
+
+  pi.registerTool({
+    name: "plan_next_step",
+    label: "Plan next step",
+    description:
+      "Best-first expansion for the search tree: decide BOTH which experiment node to branch from AND which idea to apply next. Combines score_ideas' idea ranking + the explore/exploit budget with the current tree (build on the best node, or branch to explore). Returns a shortlist of {parent node, idea, move-kind} — pass the chosen parent_id/node_kind to vkf_log_experiment. This replaces guessing what to try next.",
+    parameters: PlanParams,
+    async execute(_id, params: Static<typeof PlanParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ picks: number; top?: string }>> {
+      const root = resolveRoot(ctx);
+      const sp = sessionPaths(root);
+      requireSession(root);
+      const config = readConfig(sp.config)!;
+      const includeCandidates = params.include_candidates ?? true;
+      const k = params.k ?? 4;
+
+      const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+      const str = (v: unknown): string => String(v ?? "");
+      const optStr = (v: unknown): string | undefined => (v == null ? undefined : String(v));
+      const q = params.query?.toLowerCase().trim();
+      const cardText = (c: ReturnType<typeof listCards>[number]): string =>
+        [c.meta["title"], c.meta["mechanism"], c.meta["context"], c.body].map(str).join(" ");
+
+      const claims = listCards(root, { type: "claim" });
+      const untestedStates = new Set<MemoryState>(
+        includeCandidates ? ["candidate", "source_verified"] : ["source_verified"],
+      );
+      const exploredStates = new Set<MemoryState>(["locally_tested", "replicated", "contradicted"]);
+      const experimentCards = listCards(root, { type: "experiment" });
+      const explored: string[] = [
+        ...experimentCards.map(cardText),
+        ...claims.filter((c) => exploredStates.has(c.meta["memory_state"] as MemoryState)).map(cardText),
+      ];
+      const bucketCounts: Record<string, number> = {};
+      for (const e of experimentCards) {
+        const key = bucketKey(optStr(e.meta["lever"]), optStr(e.meta["altitude"]));
+        bucketCounts[key] = (bucketCounts[key] ?? 0) + 1;
+      }
+      const staleIds = staleIdSet(root);
+
+      const ideas: IdeaInput[] = claims
+        .filter((c) => untestedStates.has(c.meta["memory_state"] as MemoryState))
+        .filter((c) => !q || cardText(c).toLowerCase().includes(q))
+        .map((c) => ({
+          id: str(c.meta["id"]),
+          title: str(c.meta["title"]),
+          text: cardText(c),
+          belief: num(c.meta["belief"]) ?? 0.5,
+          verification_level: c.meta["verification_level"] as IdeaInput["verification_level"],
+          recency_score: num(c.meta["recency_score"]),
+          reliability_score: num(c.meta["reliability_score"]),
+          expected_value: num(c.meta["expected_value"]),
+          feasibility: num(c.meta["feasibility"]),
+          info_gain: num(c.meta["info_gain"]),
+          implementation_cost: num(c.meta["implementation_cost"]),
+          lever: optStr(c.meta["lever"]),
+          altitude: optStr(c.meta["altitude"]),
+          stale: staleIds.has(str(c.meta["id"])),
+        }));
+
+      if (ideas.length === 0) {
+        return textResult(
+          "No untested ideas to expand. Gather literature (autoresearch-vkf-knowledge-gather) and remember_claim some candidates, or synthesize with find_contradictions / find_transfers.",
+          { picks: 0 },
+        );
+      }
+
+      const mode = researchMode(config);
+      const ranked = rankIdeas(ideas, {
+        explored,
+        bucketCounts,
+        exploredTotal: experimentCards.length,
+        altitudePreference: mode.altitudePreference,
+      });
+      const ideaById = new Map(ideas.map((i) => [i.id, i]));
+      const experiments = readExperiments(sp.experiments);
+      const best = bestNode(experiments, config.direction);
+      const picks = selectExpansion(
+        experiments,
+        ranked.map((r) => ({ r, idea: ideaById.get(r.id)! })),
+        { direction: config.direction, exploreFraction: mode.exploreFraction, k: Math.min(k, ranked.length) },
+      );
+
+      const pct = (n: number): string => (n * 100).toFixed(0) + "%";
+      const lines = picks.map((p, i) => {
+        const parent = p.parent_id ? `expand ${p.parent_id}` : "draft from scratch";
+        return (
+          `${i + 1}. [${p.slot}] ${p.node_kind} — ${parent}\n` +
+          `     idea ${p.r.id} (${p.r.title})  priority ${p.r.priority.toFixed(2)} · novelty ${pct(p.r.factors.novelty)} · evidence ${pct(p.r.factors.evidence_strength)} (${p.r.bucket})`
+        );
+      });
+
+      appendLog(sp.log, { event: "note", note: "plan_next_step", picks: picks.length, top: picks[0]?.r.id, parent: picks[0]?.parent_id });
+      return textResult(
+        [
+          `Best node so far: ${best ? `${best.id} (${config.metricName}=${best.value})` : "(none yet — first node will be a draft root)"}.`,
+          `Next-step shortlist (mode: ${mode.altitudePreference}, explore ${pct(mode.exploreFraction)}):`,
+          "",
+          ...lines,
+          "",
+          "Pick one, implement the smallest falsifying change, run it, then vkf_log_experiment with that parent_id + node_kind. Spend the reserved explore picks across the run — don't collapse onto improve every time.",
+        ].join("\n"),
+        { picks: picks.length, top: picks[0]?.r.id },
       );
     },
   });
@@ -751,11 +902,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     description: Type.String({ description: "What was changed in this experiment, in words." }),
     value: Type.Number({ description: "The metric value obtained." }),
     claim_id: Type.Optional(Type.String({ description: "The claim/idea this tested (a VKF id). Updates that claim's belief and lifecycle." })),
-    baseline: Type.Optional(Type.Number({ description: "Baseline to compare against. Defaults to the session baseline (or sets it on first log)." })),
-    outcome: Type.Optional(Type.Union([Type.Literal("win"), Type.Literal("loss"), Type.Literal("inconclusive")], { description: "Override the derived outcome. Normally leave unset — it's derived from value vs baseline and metric direction." })),
+    parent_id: Type.Optional(Type.String({ description: "The experiment node this one branched from (a prior 'exp-NNN' id). Defaults to the best node so far. Outcome is judged against this parent's value — that's what makes the search a tree, not a flat line. Use plan_next_step to choose it." })),
+    node_kind: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("improve"), Type.Literal("debug"), Type.Literal("branch")], { description: "What kind of move this is: draft (from scratch), improve (build on parent), debug (fix a broken parent), branch (explore an alternative). Defaults from plan_next_step." })),
+    baseline: Type.Optional(Type.Number({ description: "Override the comparison baseline. Defaults to the parent node's value (the tree baseline), then the session baseline." })),
+    outcome: Type.Optional(Type.Union([Type.Literal("win"), Type.Literal("loss"), Type.Literal("inconclusive")], { description: "Override the derived outcome. Normally leave unset — it's derived from value vs the parent-node baseline and metric direction." })),
     kept: Type.Optional(Type.Boolean({ description: "Whether the change was kept (vs reverted)." })),
     conditions: Type.Optional(Type.String({ description: "Conditions under which this holds (model size, dataset, etc.) — recorded on the memory card." })),
     notes: Type.Optional(Type.String({ description: "Deviations, surprises, next tests." })),
+    next_suggestions: Type.Optional(Type.Array(Type.String(), { description: "Structured next-step ideas this result suggests (RD-Agent-style feedback). Recorded on the experiment card to seed the next iteration." })),
     commit: Type.Optional(Type.String({ description: "Git commit capturing the change, if any. Defaults to the current HEAD of the working dir." })),
     metrics: Type.Optional(Type.Record(Type.String(), Type.Number(), { description: "All `METRIC name=value` pairs from the run (from vkf_run_experiment), so the dashboard can show every metric — not just the primary one." })),
   });
@@ -764,7 +918,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     name: "vkf_log_experiment",
     label: "Log experiment",
     description:
-      "Record an experiment's result. Appends to the session log AND writes an experiment card back to the VKF memory (a win OR a loss is durable knowledge), updating the tested claim's belief and lifecycle. This write-back is what lets future runs avoid repeating work.",
+      "Record an experiment's result as a node in the search tree. Appends to the session log AND writes an experiment card back to the VKF memory (a win OR a loss is durable knowledge) with a profile-2 reproduction block, updating the tested claim's belief (from accumulated evidence) and lifecycle. The node branches from parent_id (default: the best node so far) and is judged against the parent's value. This write-back is what lets future runs avoid repeating work and lets the loop backtrack.",
     parameters: LogParams,
     async execute(_id, params: Static<typeof LogParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ outcome: Outcome; experiment_id: string }>> {
       const root = resolveRoot(ctx);
@@ -772,8 +926,21 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       requireSession(root);
       const config = readConfig(sp.config)!;
 
-      const baseline = params.baseline ?? config.baseline;
+      const experiments = readExperiments(sp.experiments);
+
+      // Resolve the parent node in the search tree. Default to the best node so
+      // far, so the loop builds on what works unless the agent branches elsewhere.
+      const best = bestNode(experiments, config.direction);
+      const parentId =
+        params.parent_id && experiments.some((e) => e.id === params.parent_id)
+          ? params.parent_id
+          : best?.id;
+      // Judge against the parent node's value (the tree baseline), not a single
+      // global scalar — that's what makes a branch's outcome attributable.
+      const baseline = params.baseline ?? nodeBaseline(experiments, parentId, config.baseline);
       const outcome: Outcome = params.outcome ?? deriveOutcome(baseline, params.value, config.direction);
+      const parentDepth = parentId ? (depths(experiments).get(parentId) ?? 0) : -1;
+      const nodeKind: NodeKind = params.node_kind ?? (parentId ? "improve" : "draft");
 
       // Record every metric (primary included), and the commit that captured the change.
       const metrics = { ...(params.metrics ?? {}) };
@@ -785,12 +952,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const lever = testedClaim?.meta["lever"] as string | undefined;
       const altitude = testedClaim?.meta["altitude"] as string | undefined;
 
-      const experiments = readExperiments(sp.experiments);
       const seq = String(experiments.length + 1).padStart(3, "0");
       const expEntry: Experiment = {
         id: `exp-${seq}`,
         description: params.description,
         claim_id: params.claim_id,
+        parent_id: parentId,
+        node_kind: nodeKind,
+        depth: parentDepth + 1,
         value: params.value,
         metrics,
         commit,
@@ -803,17 +972,25 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         ts: new Date().toISOString(),
       };
 
-      // Write-back: durable experiment card in the memory bundle.
+      // Write-back: durable experiment card in the memory bundle, with a profile-2
+      // reproduction block (the measure command + expected value) and tree edges.
+      const parentCard = parentId
+        ? experiments.find((e) => e.id === parentId)?.memory_card
+        : undefined;
       const card = buildExperimentCard({
         title: params.description.slice(0, 70),
         hypothesis: params.claim_id ? `Testing ${params.claim_id}: ${params.description}` : params.description,
         claim_id: params.claim_id && findCard(root, params.claim_id) ? params.claim_id : undefined,
+        parent_id: parentCard,
+        node_kind: nodeKind,
         metric_name: config.metricName,
         baseline,
         value: params.value,
         outcome: outcome === "pending" ? "inconclusive" : outcome,
         conditions: params.conditions,
         notes: params.notes,
+        next_suggestions: params.next_suggestions,
+        reproduction: { command: config.command, metric_name: config.metricName, value: params.value },
         commit: params.commit,
         lever: lever as Parameters<typeof buildExperimentCard>[0]["lever"],
         altitude: altitude as Parameters<typeof buildExperimentCard>[0]["altitude"],
@@ -830,13 +1007,18 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         requiresHumanApproval: false,
       });
 
-      // Belief + lifecycle update on the tested claim.
+      // Belief + lifecycle update on the tested claim, from accumulated evidence
+      // (win/loss tally) rather than nudging a scalar — repeated tests compound.
       let beliefNote = "";
       if (params.claim_id) {
         const claim = findCard(root, params.claim_id);
         if (claim) {
           const prev = typeof claim.meta["belief"] === "number" ? (claim.meta["belief"] as number) : 0.5;
-          const next = updateBelief(prev, outcome === "pending" ? "inconclusive" : outcome);
+          let wins = typeof claim.meta["evidence_wins"] === "number" ? (claim.meta["evidence_wins"] as number) : 0;
+          let losses = typeof claim.meta["evidence_losses"] === "number" ? (claim.meta["evidence_losses"] as number) : 0;
+          if (outcome === "win") wins += 1;
+          else if (outcome === "loss") losses += 1;
+          const next = beliefFromEvidence(wins, losses, prev);
           const newState: MemoryState =
             outcome === "win"
               ? "locally_tested"
@@ -846,15 +1028,16 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           transitionCard(root, params.claim_id, newState, {
             verification: outcome === "loss" ? "contradicted_by_local_experiment" : "verified_by_local_experiment",
             confidence: next,
+            evidence: { wins, losses },
           });
           writeTransaction(root, {
             action: outcome === "win" ? "promoted" : "updated",
             target: params.claim_id,
             actor: config.owner,
-            reason: `Belief updated by ${card.id} (${outcome}).`,
+            reason: `Belief updated by ${card.id} (${outcome}); evidence now ${wins}W/${losses}L.`,
             changedFields: [`belief: ${prev.toFixed(2)} → ${next.toFixed(2)}`, `memory_state → ${newState}`],
           });
-          beliefNote = `Claim ${params.claim_id}: belief ${prev.toFixed(2)} → ${next.toFixed(2)} (${confidenceLabel(next)}), state → ${newState}.`;
+          beliefNote = `Claim ${params.claim_id}: belief ${prev.toFixed(2)} → ${next.toFixed(2)} (${confidenceLabel(next)}, ${wins}W/${losses}L), state → ${newState}.`;
         }
       }
 
@@ -960,8 +1143,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const config = readConfig(sp.config)!;
 
       // Progress page (self-contained, no CLI needed). Same generator the loop
-      // calls automatically on init and after each experiment.
-      writeProgressDashboard(root, params.refresh_seconds);
+      // calls automatically on init and after each experiment. Include the typed
+      // graph here since this is the explicit, heavier export path.
+      writeProgressDashboard(root, params.refresh_seconds, true);
 
       // Lineage graph via the vkf CLI (best-effort).
       const lineage = vkf.html(memoryPaths(root).dir, sp.dashboardHtml, `Research memory — ${config.name}`);
@@ -1004,6 +1188,56 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       requireSession(root);
       refreshWidget(ctx, root);
       return textResult(buildFullscreenLines(root).join("\n"), { ok: true });
+    },
+  });
+
+  // ── research_graph ───────────────────────────────────────────────────────────
+  const GraphParams = Type.Object({
+    limit: Type.Optional(Type.Number({ description: "Max nodes/edges to list. Default 40." })),
+  });
+  pi.registerTool({
+    name: "research_graph",
+    label: "Research graph",
+    description:
+      "Return the typed knowledge graph of the memory bundle from `vkf graph` — nodes (papers, claims, experiments) and edges (depends_on, conflicts_with, the experiment search tree). Use it to trace lineage (which paper/claim a result came from), find orphaned or conflicting cards, and see the shape of the search. Degrades cleanly when the vkf CLI is absent.",
+    parameters: GraphParams,
+    async execute(_id, params: Static<typeof GraphParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ available: boolean; nodes: number; edges: number }>> {
+      const root = resolveRoot(ctx);
+      requireSession(root);
+      const limit = params.limit ?? 40;
+      const g = vkf.graph(memoryPaths(root).dir);
+      if (!g.available) {
+        return textResult(
+          "vkf CLI not found — the typed graph is unavailable. Set $PI_AUTORESEARCH_VKF or install the VKF env. (Memory still works; recall_memory and the dashboard's search tree don't need the CLI.)",
+          { available: false, nodes: 0, edges: 0 },
+        );
+      }
+      const idOf = (n: unknown): string =>
+        typeof n === "string" ? n : n && typeof n === "object" ? String((n as { id?: unknown }).id ?? JSON.stringify(n)) : String(n);
+      const edgeStr = (e: unknown): string => {
+        if (e && typeof e === "object") {
+          const o = e as { source?: unknown; target?: unknown; from?: unknown; to?: unknown; type?: unknown; rel?: unknown };
+          const a = o.source ?? o.from;
+          const b = o.target ?? o.to;
+          const rel = o.type ?? o.rel;
+          return `${idOf(a)} ──${rel ? String(rel) : ""}──▶ ${idOf(b)}`;
+        }
+        return String(e);
+      };
+      const nodeLines = g.nodes.slice(0, limit).map((n) => `  • ${idOf(n)}`);
+      const edgeLines = g.edges.slice(0, limit).map((e) => `  • ${edgeStr(e)}`);
+      return textResult(
+        [
+          `Knowledge graph: ${g.nodes.length} node(s), ${g.edges.length} edge(s).`,
+          "",
+          "NODES:",
+          ...(nodeLines.length ? nodeLines : ["  (none)"]),
+          "",
+          "EDGES:",
+          ...(edgeLines.length ? edgeLines : ["  (none)"]),
+        ].join("\n"),
+        { available: true, nodes: g.nodes.length, edges: g.edges.length },
+      );
     },
   });
 
@@ -1242,52 +1476,61 @@ function parseDdgResults(html: string, limit: number): WebSearchHit[] {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * (Re)generate the self-contained progress dashboard (progress.html) from the
- * current session + memory state. Pure-JS and cheap (no CLI), so it is safe to
- * call on every state change — an open browser tab meta-refreshes itself live.
- * No-op (returns undefined) when there is no session/config yet. The interactive
- * idea-lineage graph (dashboard.html) is heavier and stays in export_dashboard.
+ * Build the dashboard payload from the current session + memory state.
+ * `includeGraph` shells out to `vkf graph` (skip it on hot paths). No-op (returns
+ * undefined) when there is no session/config yet.
  */
-function writeProgressDashboard(root: string, refreshSeconds?: number): string | undefined {
+function buildDashboardPayload(root: string, refreshSeconds?: number, includeGraph = false) {
   const sp = sessionPaths(root);
   const config = readConfig(sp.config);
   if (!config) return undefined;
 
-  const experiments: ProgressExperiment[] = readExperiments(sp.experiments).map((e) => ({
-    id: e.id,
-    description: e.description,
-    value: e.value,
-    outcome: e.outcome,
-    kept: e.kept,
-    claim_id: e.claim_id,
-    ts: e.ts,
-  }));
   const memory: Record<string, number> = Object.fromEntries(MEMORY_STATES.map((s) => [s, 0]));
   for (const c of listCards(root, { type: "claim" })) {
     const st = c.meta["memory_state"] as MemoryState | undefined;
     if (st && st in memory) memory[st]! += 1;
   }
   const claims = listCards(root, { bucket: "verified", type: "claim" })
-    .slice(0, 12)
+    .slice(0, 16)
     .map((c) => ({
+      id: String(c.meta["id"]),
       title: String(c.meta["title"] ?? c.meta["id"]),
       confidence: String(c.meta["confidence"] ?? "—"),
+      belief: typeof c.meta["belief"] === "number" ? (c.meta["belief"] as number) : 0.5,
       state: String(c.meta["memory_state"] ?? "—"),
     }));
 
-  const html = renderProgressHtml({
+  const g = includeGraph ? vkf.graph(memoryPaths(root).dir) : undefined;
+  return buildDashboardData({
     name: config.name,
     goal: config.goal,
     metricName: config.metricName,
     direction: config.direction,
     baseline: config.baseline,
-    experiments,
+    experiments: readExperiments(sp.experiments),
     memory,
     claims,
+    graph: g?.available ? { nodes: g.nodes, edges: g.edges } : undefined,
     generatedAt: new Date().toISOString(),
     refreshSeconds,
+    version: VERSION,
   });
-  writeFileSync(sp.progressHtml, html, "utf8");
+}
+
+/**
+ * (Re)generate the interactive progress dashboard. Writes the HTML shell
+ * (progress.html) plus the live data sidecar (data.json); the page polls the
+ * sidecar and re-renders in place. Pure-JS and cheap (no CLI on this path), so it
+ * is safe to call on every state change. No-op (returns undefined) when there is
+ * no session/config yet. The typed idea-lineage graph (dashboard.html via
+ * `vkf html`) is heavier and stays in export_dashboard.
+ */
+function writeProgressDashboard(root: string, refreshSeconds?: number, includeGraph = false): string | undefined {
+  const sp = sessionPaths(root);
+  const data = buildDashboardPayload(root, refreshSeconds, includeGraph);
+  if (!data) return undefined;
+  writeFileSync(sp.progressData, JSON.stringify(data), "utf8");
+  writeFileSync(sp.progressHtml, renderDashboardHtml(data), "utf8");
   return sp.progressHtml;
 }
 

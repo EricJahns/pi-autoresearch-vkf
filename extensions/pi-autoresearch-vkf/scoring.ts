@@ -114,6 +114,8 @@ export interface IdeaInput {
   /** Coverage tags (see ./cards.ts) — drive structural novelty + altitude bias. */
   lever?: string;
   altitude?: Altitude | string;
+  /** Flagged stale (valid_until passed, or `vkf freshness` flagged it). Penalized. */
+  stale?: boolean;
 }
 
 export interface ScoreFactors {
@@ -127,6 +129,8 @@ export interface ScoreFactors {
   altitude_affinity: number;
   info_gain: number;
   implementation_cost: number;
+  /** Freshness multiplier: 1 when current, <1 when flagged stale. */
+  freshness: number;
 }
 
 export interface ScoredIdea {
@@ -212,8 +216,13 @@ export function scoreIdea(idea: IdeaInput, opts: ScoreOptions = {}): ScoredIdea 
   const info_gain = clamp(idea.info_gain ?? 1 - Math.abs(belief - 0.5) * 2, 0.05, 1);
   const implementation_cost = clamp(idea.implementation_cost ?? 0.4, 0.05, 1);
 
+  // Stale knowledge shouldn't steer the loop on equal footing with current
+  // evidence — halve its priority rather than dropping it outright (it may still
+  // be worth re-verifying). Driven by valid_until / `vkf freshness`.
+  const freshness = idea.stale ? 0.5 : 1;
+
   const priority =
-    (expected_value * feasibility * evidence_strength * novelty * info_gain * altitude_affinity) /
+    (expected_value * feasibility * evidence_strength * novelty * info_gain * altitude_affinity * freshness) /
     implementation_cost;
 
   return {
@@ -229,6 +238,7 @@ export function scoreIdea(idea: IdeaInput, opts: ScoreOptions = {}): ScoredIdea 
       altitude_affinity,
       info_gain,
       implementation_cost,
+      freshness,
     },
     max_similarity,
     bucket,

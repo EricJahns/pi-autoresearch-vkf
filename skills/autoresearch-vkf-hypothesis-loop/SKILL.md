@@ -9,6 +9,14 @@ This is the engine. Each iteration turns trusted knowledge into a tested result
 and feeds it back into memory. Unlike a blind keep-what-wins loop, you choose
 ideas deliberately and you never repeat settled work.
 
+**The search is a tree, not a line.** Every experiment is a *node* that branches
+from a parent, and its outcome is judged against that parent's value — not one
+global baseline. So you can build on the best result so far, or **backtrack** to an
+earlier, better node and branch in a new direction when a path dead-ends. Don't
+just keep mutating the latest run. `plan_next_step` picks *which node to expand*
+and *which idea to apply* for you; pass its `parent_id` + `node_kind` to
+`vkf_log_experiment`.
+
 ## Each iteration
 
 1. **Recall.** Call `recall_memory` (query the goal). Read all four groups:
@@ -33,24 +41,26 @@ ideas deliberately and you never repeat settled work.
    next pick chooses from a *richer, better-grounded* set of ideas. A good loop
    reads more than it tweaks.
 
-3. **Pick an idea — score, don't guess.** Call `score_ideas`. It ranks untested
-   claims by
-   `priority = EV × feasibility × evidence × novelty × info_gain × altitude_affinity ÷ cost`,
-   where **novelty** blends lexical distance with *structural* novelty — how
-   under-explored the idea's `lever·altitude` bucket is. So a reworded tweak to a
-   bucket you've already hammered scores low even if its wording is fresh. Read the
-   factor breakdown — it tells you *why* an idea ranks where it does. Prefer ideas
-   backed by `source_verified`+ claims. The `⚠ similar to explored/playbook` flag
-   marks ideas you've effectively already covered.
+3. **Plan the next step — don't guess.** Call `plan_next_step`. It does best-first
+   expansion: it ranks untested claims by
+   `priority = EV × feasibility × evidence × novelty × info_gain × altitude_affinity × freshness ÷ cost`
+   (where **novelty** blends lexical distance with *structural* novelty — how
+   under-explored the idea's `lever·altitude` bucket is, so a reworded tweak to a
+   bucket you've hammered scores low; and **freshness** down-weights stale
+   knowledge), **and** attaches each idea to a node to expand: `improve` the best
+   node, or `branch` from it to explore. It reports the best node so far and a
+   budget-balanced shortlist tagging each pick `[exploit]` (a reliable incremental
+   move) or `[explore]` (a high-altitude / high-uncertainty bet given a reserved
+   slot). Read the factor breakdown — it tells you *why* a pick ranks where it does.
 
-   **Honor the budget-balanced shortlist.** `score_ideas` also returns a shortlist
-   that tags each pick `[exploit]` (a reliable incremental move) or
-   `[explore ⟵ reserved]` (a high-altitude / high-uncertainty bet given a reserved
-   slot). Across the run, actually spend the reserved explore slots — don't let
-   every iteration collapse onto exploit. The coverage line in the widget shows
-   when you're stuck in one corner. *Exception:* if the user asked for tuning, the
-   mode is already `tuning`/`explore 0%` and exploit picks are correct — or call
+   **Honor the explore quota.** Across the run, actually spend the reserved explore
+   picks — don't let every iteration collapse onto `improve` the same node. The
+   coverage line in the widget (and the dashboard heatmap) shows when you're stuck
+   in one corner. When a branch stops paying off, expand a different node rather
+   than grinding the latest. *Exception:* if the user asked for tuning, the mode is
+   already `tuning`/`explore 0%` and exploit picks are correct — or call
    `set_research_mode` to steer it yourself.
+   (`score_ideas` still exists if you only want the idea ranking without a node.)
 
 4. **Form a structured hypothesis** before touching code:
    - *mechanism* (why it should work), *intervention* (the smallest change),
@@ -61,12 +71,18 @@ ideas deliberately and you never repeat settled work.
    then `vkf_run_experiment`. Read the `METRIC` line — don't eyeball logs.
 
 6. **Judge honestly, then `vkf_log_experiment`.** Record the value, the tested
-   `claim_id`, whether you `kept` it, conditions, and notes. The tool:
-   - derives win/loss/inconclusive vs the baseline,
+   `claim_id`, the `parent_id` + `node_kind` from `plan_next_step`, whether you
+   `kept` it, conditions, notes, and any `next_suggestions` the result implies. The
+   tool:
+   - judges win/loss/inconclusive against the **parent node's** value (the tree
+     baseline), not a single global one,
    - writes an **experiment card back to memory** (a loss is durable knowledge),
-   - updates the claim's **belief** and lifecycle (`win` → `locally_tested`;
-     repeated `loss` → `contradicted`).
-   Keep wins, revert regressions — either way it's now remembered.
+     with a profile-2 reproduction block and the parent edge for `vkf graph`,
+   - updates the claim's **belief from accumulated evidence** (the win/loss tally,
+     not a fixed nudge) and its lifecycle (`win` → `locally_tested`; repeated `loss`
+     → `contradicted`).
+   Keep wins, revert regressions — either way it's now remembered, and the node is
+   in the tree to branch from later.
 
 7. **Update `.autoresearch-vkf/session/prompt.md`** with the takeaway and repeat.
 
