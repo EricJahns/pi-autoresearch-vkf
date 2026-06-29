@@ -49,6 +49,7 @@ export function sessionPaths(root: string) {
     checks: join(dir, "checks.sh"),
     report: join(dir, "report.md"),
     progressHtml: join(dir, "progress.html"),
+    progressData: join(dir, "data.json"),
     dashboardHtml: join(dir, "dashboard.html"),
   } as const;
 }

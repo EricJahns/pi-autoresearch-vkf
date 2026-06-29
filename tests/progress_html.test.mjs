@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  escapeHtml,
-  renderChart,
-  renderProgressHtml,
-} from "../extensions/pi-autoresearch-vkf/progress_html.ts";
+import { escapeHtml, renderDashboardHtml } from "../extensions/pi-autoresearch-vkf/progress_html.ts";
 
 const base = {
   name: "Speed up tests",
@@ -13,65 +9,60 @@ const base = {
   metricName: "wall_clock_s",
   direction: "lower",
   baseline: 10,
+  best: 8,
+  metricNames: ["wall_clock_s"],
+  experiments: [],
   memory: { candidate: 2, locally_tested: 1, contradicted: 1 },
-  claims: [{ title: "AdaGC helps", confidence: "high", state: "locally_tested" }],
+  claims: [{ id: "claim:adagc", title: "AdaGC helps", confidence: "high", belief: 0.8, state: "locally_tested" }],
+  coverage: { levers: ["algorithm"], altitudes: ["mechanism"], counts: { "algorithm|mechanism": 1 } },
   generatedAt: "2026-06-27T00:00:00Z",
+  refreshSeconds: 5,
+  version: "0.9.0",
 };
 
 test("escapeHtml neutralizes markup", () => {
   assert.equal(escapeHtml('<b>"x"&\'y\'</b>'), "&lt;b&gt;&quot;x&quot;&amp;&#39;y&#39;&lt;/b&gt;");
 });
 
-test("renderProgressHtml is a self-contained document", () => {
-  const html = renderProgressHtml({ ...base, experiments: [] });
+test("renderDashboardHtml is a self-contained interactive document", () => {
+  const html = renderDashboardHtml(base);
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /<style>/); // inline CSS, no external assets
-  assert.ok(!/<script/i.test(html)); // no JS dependency
+  assert.match(html, /<script>/); // the inline vanilla-JS app
   assert.match(html, /Speed up tests/);
-  assert.match(html, /No experiments logged yet/);
+  // Live refresh is via a data.json sidecar fetch, not a whole-page meta refresh.
+  assert.ok(!/http-equiv="refresh"/.test(html));
+  assert.match(html, /data\.json/);
 });
 
-test("renders a chart once there are measured experiments", () => {
-  const html = renderProgressHtml({
+test("embeds the payload as inline JSON, safely", () => {
+  const html = renderDashboardHtml({
     ...base,
     experiments: [
-      { id: "exp-001", description: "try a", value: 9, outcome: "win", kept: true, ts: "" },
-      { id: "exp-002", description: "try b", value: 11, outcome: "loss", ts: "" },
+      { id: "exp-001", description: "try a", value: 9, outcome: "win", kept: true, depth: 0, metrics: { wall_clock_s: 9 }, ts: "" },
     ],
   });
-  assert.match(html, /<svg/);
+  assert.match(html, /id="vkf-data"/);
   assert.match(html, /exp-001/);
-  assert.match(html, /baseline 10/);
+  // `<` inside embedded JSON must be neutralized so it can't break out of <script>.
+  assert.ok(!html.includes("</script>x"));
 });
 
-test("chart handles a single point without dividing by zero", () => {
-  const svg = renderChart({ ...base, experiments: [{ id: "exp-001", description: "x", value: 5, outcome: "win", ts: "" }] });
-  assert.match(svg, /<circle/);
-  assert.ok(!svg.includes("NaN"));
-});
-
-test("chart handles a flat series (all equal values)", () => {
-  const svg = renderChart({
+test("escapes a malicious experiment description in the embedded JSON", () => {
+  const html = renderDashboardHtml({
     ...base,
-    baseline: undefined,
     experiments: [
-      { id: "a", description: "", value: 5, outcome: "win", ts: "" },
-      { id: "b", description: "", value: 5, outcome: "win", ts: "" },
+      { id: "exp-001", description: "</script><img src=x>", value: 9, outcome: "win", depth: 0, metrics: {}, ts: "" },
     ],
   });
-  assert.ok(!svg.includes("NaN"));
+  // Neutralizing `<` is enough to stop a `</script>` breakout; `>` need not be escaped.
+  assert.ok(!html.includes("</script><img"));
+  assert.match(html, /\\u003c\/script>/);
 });
 
-test("refresh meta is present by default and omitted when 0", () => {
-  assert.match(renderProgressHtml({ ...base, experiments: [] }), /http-equiv="refresh"/);
-  assert.ok(!/http-equiv="refresh"/.test(renderProgressHtml({ ...base, experiments: [], refreshSeconds: 0 })));
-});
-
-test("experiment descriptions are escaped in the timeline", () => {
-  const html = renderProgressHtml({
-    ...base,
-    experiments: [{ id: "exp-001", description: "<script>x</script>", value: 9, outcome: "win", ts: "" }],
-  });
-  assert.ok(!html.includes("<script>x</script>"));
-  assert.match(html, /&lt;script&gt;/);
+test("references the search tree and coverage containers", () => {
+  const html = renderDashboardHtml(base);
+  assert.match(html, /id="tree"/);
+  assert.match(html, /id="heatmap"/);
+  assert.match(html, /id="chart"/);
 });

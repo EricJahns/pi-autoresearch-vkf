@@ -16,11 +16,32 @@ export type Outcome = "win" | "loss" | "inconclusive" | "pending";
 
 export const OUTCOMES: readonly Outcome[] = ["win", "loss", "inconclusive", "pending"];
 
+/**
+ * What kind of move produced this node, in the tree-search sense:
+ * `draft` is a fresh start (a root or a from-scratch branch), `improve` builds on
+ * its parent, `debug` fixes a broken parent, and `branch` explores an alternative
+ * direction from a node. Purely descriptive — it colors the tree and documents the
+ * search; it does not change scoring.
+ */
+export type NodeKind = "draft" | "improve" | "debug" | "branch";
+
+export const NODE_KINDS: readonly NodeKind[] = ["draft", "improve", "debug", "branch"];
+
 export interface Experiment {
   /** Stable id, e.g. "exp-003-adagc". */
   id: string;
   /** What was changed, in words. */
   description: string;
+  /**
+   * Id of the experiment this one branched from in the search tree. `undefined`
+   * (or a missing/unknown id) marks a root. Legacy records without this field are
+   * stitched into a linear chain by {@link ./tree.ts}.
+   */
+  parent_id?: string;
+  /** What kind of move this node is (draft/improve/debug/branch). */
+  node_kind?: NodeKind;
+  /** Depth in the search tree (root = 0). Filled when the node is logged. */
+  depth?: number;
   /** Claim/idea this experiment tested (a VKF id, e.g. "claim:adagc"). */
   claim_id?: string;
   /** Primary metric value obtained (the session's configured metric). */
@@ -137,4 +158,24 @@ export function summarize(
 export function experimentMetrics(e: Experiment, primaryMetric: string): Record<string, number> {
   if (e.metrics && Object.keys(e.metrics).length > 0) return e.metrics;
   return e.value === undefined ? {} : { [primaryMetric]: e.value };
+}
+
+/**
+ * The baseline a node should be judged against: the value of its parent node in
+ * the tree. A node compares to where it branched from, not to a single global
+ * baseline — that's what makes outcomes attributable in a branching search.
+ *
+ * Falls back to `configBaseline` (then `undefined`) when there is no resolvable
+ * parent value, so roots and legacy linear runs behave exactly as before.
+ */
+export function nodeBaseline(
+  experiments: readonly Experiment[],
+  parentId: string | undefined,
+  configBaseline: number | undefined,
+): number | undefined {
+  if (parentId) {
+    const parent = experiments.find((e) => e.id === parentId);
+    if (parent?.value !== undefined) return parent.value;
+  }
+  return configBaseline;
 }

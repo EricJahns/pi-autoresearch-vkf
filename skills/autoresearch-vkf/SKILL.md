@@ -18,11 +18,13 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 - `remember_claim` — stage a literature-derived candidate claim (+ its source paper).
 - `verify_claim` — advance/downgrade a card's trust lifecycle (audited).
 - `recall_memory` — query memory for trusted claims, candidates, prior experiments, negatives, conflicts.
-- `score_ideas` — rank untested ideas by priority (EV × feasibility × evidence × novelty × info_gain ÷ cost).
+- `score_ideas` — rank untested ideas by priority (EV × feasibility × evidence × novelty × info_gain × freshness ÷ cost).
+- `plan_next_step` — best-first expansion: pick which experiment node to branch from AND which idea to apply next.
 - `find_contradictions` — mine memory for tensions that seed novel hypotheses.
 - `find_transfers` — cross-domain mechanism search for surprising analogies.
 - `vkf_run_experiment` — run the measurement command, capture `METRIC name=value`.
-- `vkf_log_experiment` — record a result and write it back to memory (updates belief & lifecycle).
+- `vkf_log_experiment` — record a result as a tree node and write it back to memory (updates belief from evidence & lifecycle).
+- `research_graph` — the typed knowledge graph (papers → claims → experiments, conflicts, the search tree) via `vkf graph`.
 - `research_status` — show session + memory state.
 
 ## The two layers
@@ -63,10 +65,12 @@ transaction record — promotion is an explicit, audited step.
    the 2–3 worth testing.
 
 5. **Loop** → use the **autoresearch-vkf-hypothesis-loop** skill: `recall_memory` →
-   **refresh research** → pick the highest-value, sufficiently-novel idea →
+   **refresh research** → `plan_next_step` (which node to expand + which idea) →
    implement the smallest falsifying change → `vkf_run_experiment` →
-   `vkf_log_experiment` → repeat. Keep wins, revert regressions; either way the
-   result is now in memory. Gathering literature isn't a one-shot up-front step:
+   `vkf_log_experiment(parent_id, node_kind)` → repeat. The search is a **tree**:
+   build on the best node, or backtrack and branch when a path dead-ends. Keep
+   wins, revert regressions; either way the result is now a node in memory.
+   Gathering literature isn't a one-shot up-front step:
    each result re-opens questions, so keep returning to the literature and the
    synthesis skills (step 4b) between experiments rather than grinding the same
    ideas. Reading more between goes is the point. And don't lean on small knobs to

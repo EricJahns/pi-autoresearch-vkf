@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.9.0
+
+A major release that turns the loop into an explicit search and makes memory and
+the dashboard first-class. Inspired by agentic tree-search (AIDE, The AI Scientist
+v2) and RD-Agent's structured Research→Development cycle.
+
+- **Experiment tree-search.** Experiments are now *nodes* in a search tree: each
+  branches from a `parent_id` and is judged against the **parent's value**, not one
+  global baseline. The loop can build on the best node or backtrack and branch out
+  of a dead end. New pure `tree.ts` (`buildTree`, `bestNode`, `frontier`,
+  `selectExpansion`); `Experiment` gains `parent_id`/`node_kind`/`depth` (all
+  optional — legacy sessions read as a linear chain).
+- **`plan_next_step` tool.** Best-first expansion that decides *which node to
+  expand* and *which idea to apply* together, honoring the explore/exploit budget.
+  `vkf_log_experiment` takes `parent_id`/`node_kind`/`next_suggestions`.
+- **Belief from evidence.** Claim belief is now the mean of a Beta posterior over
+  the accumulated win/loss tally (`beliefFromEvidence`), persisted on the card —
+  repeated tests compound instead of a fixed ±delta overwriting history.
+- **Profile-2 reproduction blocks.** Experiment cards carry a `verification`
+  reproduction block (command + expected metric), so `vkf validate --profile 2`
+  passes (closes the roadmap item). Parent/claim edges are written so `vkf graph`
+  renders the real lineage + search tree.
+- **`research_graph` tool.** Surfaces the typed `vkf graph` (nodes + edges);
+  degrades cleanly without the CLI. **Freshness** now down-weights stale knowledge
+  in scoring instead of only warning.
+- **Interactive dashboard.** `progress.html` is rebuilt as a self-contained
+  vanilla-JS app (no build, no deps) that fetches a `data.json` sidecar and
+  re-renders **in place** (filters/scroll/selection survive refresh — no more
+  whole-page `<meta refresh>`). Adds a multi-metric chart with series toggles +
+  log scale + hover tooltips, an interactive **search-tree** view with a node
+  detail panel, a lever × altitude **coverage heatmap**, belief bars, a
+  filter/sortable experiment table, and a light/dark toggle.
+
 ## 0.8.11
 
 - **Fix: alt+g dashboard now updates live.** The fullscreen overlay rendered once
