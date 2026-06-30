@@ -44,6 +44,41 @@ export interface CoverageGrid {
   counts: Record<string, number>;
 }
 
+/** One node in the idea-lineage graph (paper → claim → experiment). */
+export interface LineageNode {
+  id: string;
+  type: "paper" | "claim" | "experiment";
+  title: string;
+  /** Memory lifecycle state (claims) — drives colour. */
+  state?: string;
+  /** Belief in [0,1] (claims), for the node size/label. */
+  belief?: number;
+  /** win/loss/inconclusive/pending (experiments) — drives colour. */
+  outcome?: string;
+  /** Primary metric value (experiments). */
+  value?: number;
+  /** Tree depth (experiments), so the graph lays out the search chain. */
+  depth?: number;
+}
+
+/** One typed edge in the idea-lineage graph. */
+export interface LineageEdge {
+  source: string;
+  target: string;
+  /** tested = experiment→claim, parent = experiment→experiment, evidenced = claim→paper. */
+  kind: "tested" | "parent" | "evidenced";
+}
+
+/**
+ * The idea-lineage graph, built purely from session + memory state (no `vkf` CLI).
+ * Because it rides in every payload it survives live `data.json` refreshes, unlike
+ * the heavier `vkf graph` output (which only the explicit export path attaches).
+ */
+export interface Lineage {
+  nodes: LineageNode[];
+  edges: LineageEdge[];
+}
+
 export interface DashboardData {
   name: string;
   goal: string;
@@ -59,7 +94,9 @@ export interface DashboardData {
   /** Claims to surface, with numeric belief for the belief bars. */
   claims: { id: string; title: string; confidence: string; belief: number; state: string }[];
   coverage: CoverageGrid;
-  /** Typed lineage graph from `vkf graph`, when the CLI is available. */
+  /** Idea-lineage graph (paper → claim → experiment), built CLI-free so it is always present. */
+  lineage: Lineage;
+  /** Typed lineage graph from `vkf graph`, when the CLI is available (richer; export path only). */
   graph?: { nodes: unknown[]; edges: unknown[] };
   generatedAt: string;
   /** Seconds between live `data.json` polls; 0 disables. */
@@ -77,6 +114,10 @@ export interface BuildDashboardInput {
   experiments: readonly Experiment[];
   memory: Record<string, number>;
   claims: { id: string; title: string; confidence: string; belief: number; state: string }[];
+  /** Source papers, for the lineage graph's first column (optional; CLI-free). */
+  papers?: { id: string; title: string }[];
+  /** All claim cards (any bucket) for lineage nodes + their source paper ids. */
+  lineageClaims?: { id: string; title: string; belief?: number; state?: string; paper_ids?: string[] }[];
   graph?: { nodes: unknown[]; edges: unknown[] };
   generatedAt: string;
   refreshSeconds?: number;
@@ -88,6 +129,48 @@ function bestValue(experiments: readonly Experiment[], direction: MetricDirectio
   const measured = experiments.filter((e) => e.value !== undefined).map((e) => e.value!);
   if (measured.length === 0) return undefined;
   return direction === "higher" ? Math.max(...measured) : Math.min(...measured);
+}
+
+/**
+ * Build the idea-lineage graph (paper → claim → experiment, plus the experiment
+ * search tree) from local state alone — no `vkf` CLI. Claim nodes come from
+ * `lineageClaims` when supplied, else fall back to the surfaced `claims`; any
+ * claim an experiment references but that is otherwise missing is added as a stub
+ * so every edge has both endpoints.
+ */
+function buildLineage(
+  papers: { id: string; title: string }[],
+  claims: { id: string; title: string; belief?: number; state?: string; paper_ids?: string[] }[],
+  experiments: DashboardExperiment[],
+): Lineage {
+  const nodes = new Map<string, LineageNode>();
+  const edges: LineageEdge[] = [];
+
+  for (const p of papers) nodes.set(p.id, { id: p.id, type: "paper", title: p.title });
+  for (const c of claims) {
+    nodes.set(c.id, { id: c.id, type: "claim", title: c.title, state: c.state, belief: c.belief });
+    for (const pid of c.paper_ids ?? []) {
+      if (nodes.has(pid)) edges.push({ source: c.id, target: pid, kind: "evidenced" });
+    }
+  }
+  for (const e of experiments) {
+    nodes.set(e.id, {
+      id: e.id,
+      type: "experiment",
+      title: e.description,
+      outcome: e.outcome,
+      value: e.value,
+      depth: e.depth,
+    });
+    if (e.claim_id) {
+      if (!nodes.has(e.claim_id)) nodes.set(e.claim_id, { id: e.claim_id, type: "claim", title: e.claim_id });
+      edges.push({ source: e.id, target: e.claim_id, kind: "tested" });
+    }
+    if (e.parent_id && nodes.has(e.parent_id)) {
+      edges.push({ source: e.id, target: e.parent_id, kind: "parent" });
+    }
+  }
+  return { nodes: [...nodes.values()], edges };
 }
 
 /** Assemble the full dashboard payload from session + memory state. */
@@ -136,6 +219,7 @@ export function buildDashboardData(input: BuildDashboardInput): DashboardData {
     memory: input.memory,
     claims: input.claims,
     coverage: { levers: LEVERS, altitudes: ALTITUDES, counts },
+    lineage: buildLineage(input.papers ?? [], input.lineageClaims ?? input.claims, experiments),
     graph: input.graph,
     generatedAt: input.generatedAt,
     refreshSeconds: input.refreshSeconds ?? 5,

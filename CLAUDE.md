@@ -23,7 +23,11 @@ and benchmark results — don't duplicate those tables here.
   `node_modules/.bin/tsx --test tests/*.test.mjs` (or `node --import tsx --test tests/*.test.mjs`).
 - Run a single test file: `node --experimental-strip-types --test tests/scoring.test.mjs`
   (or via tsx as above).
-- `npm run bench` — `benchmark/run.ts`: standard blind loop vs. ours over deterministic ground-truth scenarios.
+- `npm run bench` — `benchmark/run.ts --seeds 500`: standard blind loop vs. ours over
+  deterministic ground-truth scenarios. The harness lives in `benchmark/`
+  (`scenarios.ts` defines the ground-truth idea-environments, `harness.ts` runs both
+  policies — *ours* through the real `scoring.ts`/`synthesis.ts`, `run.ts` is the entry
+  point and can rewrite the `BENCH:START/END` block in `README.md`).
 
 Node >= 22 is required.
 
@@ -109,7 +113,12 @@ a self-contained vanilla-JS shell that fetches that sidecar and re-renders in pl
 (no build, no deps). `index.ts`'s `writeProgressDashboard` writes both on every
 state change. Keep the client JS in `progress_html.ts` as the array-of-lines
 `APP_JS` so its own template literals don't clash with the module's template
-strings. The heavier `vkf html` lineage graph stays in `export_dashboard`.
+strings. The page embeds an idea-lineage graph (paper → claim → experiment) built
+**CLI-free** by `buildLineage` in `progress_data.ts` so it rides in every payload
+and survives live refresh; the heavier *typed* `vkf html` lineage (with conflict
+edges) stays in `export_dashboard`. The
+in-terminal views are separate: the always-on widget and the Alt+G fullscreen
+overlay (`research_status`) render through `dashboard.ts`/`render.ts`/`style.ts`.
 
 ### Skills
 

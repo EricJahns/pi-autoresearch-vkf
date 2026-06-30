@@ -70,7 +70,7 @@ import * as vkf from "./vkf.ts";
 const MAX_OUTPUT_CHARS = 16_000;
 
 /** Package version, surfaced in the dashboard footer. Keep in sync with package.json. */
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 const truncate = (s: string): string =>
   s.length <= MAX_OUTPUT_CHARS
@@ -1486,11 +1486,18 @@ function buildDashboardPayload(root: string, refreshSeconds?: number, includeGra
   if (!config) return undefined;
 
   const memory: Record<string, number> = Object.fromEntries(MEMORY_STATES.map((s) => [s, 0]));
-  for (const c of listCards(root, { type: "claim" })) {
+  const claimCards = listCards(root, { type: "claim" });
+  for (const c of claimCards) {
     const st = c.meta["memory_state"] as MemoryState | undefined;
     if (st && st in memory) memory[st]! += 1;
   }
-  const claims = listCards(root, { bucket: "verified", type: "claim" })
+  // Source paper ids a claim depends on, for the lineage graph's evidenced edges.
+  const paperIds = (c: (typeof claimCards)[number]): string[] =>
+    (Array.isArray(c.meta["depends_on"]) ? (c.meta["depends_on"] as unknown[]) : [])
+      .map(String)
+      .filter((d) => d.startsWith("paper:"));
+  const claims = claimCards
+    .filter((c) => c.bucket === "verified")
     .slice(0, 16)
     .map((c) => ({
       id: String(c.meta["id"]),
@@ -1499,6 +1506,18 @@ function buildDashboardPayload(root: string, refreshSeconds?: number, includeGra
       belief: typeof c.meta["belief"] === "number" ? (c.meta["belief"] as number) : 0.5,
       state: String(c.meta["memory_state"] ?? "—"),
     }));
+  // Every claim (any bucket) feeds the lineage graph, so tested candidates show too.
+  const lineageClaims = claimCards.map((c) => ({
+    id: String(c.meta["id"]),
+    title: String(c.meta["title"] ?? c.meta["id"]),
+    belief: typeof c.meta["belief"] === "number" ? (c.meta["belief"] as number) : undefined,
+    state: c.meta["memory_state"] ? String(c.meta["memory_state"]) : undefined,
+    paper_ids: paperIds(c),
+  }));
+  const papers = listCards(root, { type: "paper" }).map((c) => ({
+    id: String(c.meta["id"]),
+    title: String(c.meta["title"] ?? c.meta["id"]),
+  }));
 
   const g = includeGraph ? vkf.graph(memoryPaths(root).dir) : undefined;
   return buildDashboardData({
@@ -1510,6 +1529,8 @@ function buildDashboardPayload(root: string, refreshSeconds?: number, includeGra
     experiments: readExperiments(sp.experiments),
     memory,
     claims,
+    papers,
+    lineageClaims,
     graph: g?.available ? { nodes: g.nodes, edges: g.edges } : undefined,
     generatedAt: new Date().toISOString(),
     refreshSeconds,
