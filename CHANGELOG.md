@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.1
+
+Dashboard redesign: wider, denser, and the idea-lineage graph is now built in.
+
+- **Wider, multi-column layout.** The progress page grew from a narrow 1100px
+  column to a fluid layout (up to 1680px) that uses the horizontal space: chart +
+  selected-node, search-tree + knowledge-graph, and coverage + memory each sit
+  side by side, collapsing to a single column under ~1020px. Fixes the big blank
+  band that the old 2fr/1fr split left down the middle.
+- **Knowledge graph, embedded.** The paper → claim → experiment lineage is now a
+  panel on the progress page itself, not just the separate `dashboard.html`. It is
+  built **CLI-free** in `progress_data.ts` (`buildLineage`) from session + memory
+  state, so it rides in every `data.json` payload and survives live refreshes
+  (unlike the `vkf graph` output, which only the export path attaches). Nodes are
+  coloured by type/outcome and laid out left-to-right by lineage rank; clicking an
+  experiment node selects it in the search tree and detail panel too. `dashboard.html`
+  (`vkf html`) remains the richer typed view with conflict edges.
+- New optional `papers`/`lineageClaims` inputs to `buildDashboardData`; payload
+  gains a `lineage` field. Backward compatible (both default to empty / the
+  surfaced claims).
+
 ## 0.9.0
 
 A major release that turns the loop into an explicit search and makes memory and

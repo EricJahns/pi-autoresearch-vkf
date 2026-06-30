@@ -43,11 +43,15 @@ const STYLES = `
   }
   * { box-sizing: border-box; }
   body { font: 14px/1.5 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; margin:0; background:var(--bg); color:var(--fg); }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 20px 80px; }
+  .wrap { max-width: 1680px; margin: 0 auto; padding: 20px clamp(16px, 3vw, 40px) 80px; }
   header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  h2 { font-size: 13px; margin: 26px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; }
+  h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; }
   .goal { color: var(--muted); margin: 0; }
+  section { min-width: 0; display: flex; flex-direction: column; }
+  section > .panel { flex: 1; }
+  .h2row { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .h2row h2 { margin:0; }
   .toolbtn { background:var(--panel); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
   .toolbtn:hover { border-color:var(--accent); }
   .cards { display:flex; gap:12px; flex-wrap:wrap; margin-top:14px; }
@@ -55,8 +59,12 @@ const STYLES = `
   .card .k { font-size:12px; color:var(--muted); }
   .card .v { font-size:22px; font-weight:600; }
   .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; position:relative; }
-  .grid2 { display:grid; grid-template-columns: 2fr 1fr; gap:16px; align-items:start; }
-  @media (max-width: 820px){ .grid2 { grid-template-columns: 1fr; } }
+  .panel.scroll { overflow:auto; max-height:540px; }
+  .grid { display:grid; gap:16px; align-items:stretch; margin-top:18px; }
+  .grid.main  { grid-template-columns: minmax(0,1.7fr) minmax(0,1fr); }
+  .grid.duo   { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .grid.split { grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); }
+  @media (max-width: 1020px){ .grid.main, .grid.duo, .grid.split { grid-template-columns: 1fr; } }
   .controls { display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:10px; font-size:12px; color:var(--muted); }
   .controls label { display:inline-flex; gap:4px; align-items:center; cursor:pointer; }
   select { background:var(--panel); color:var(--fg); border:1px solid var(--border); border-radius:6px; padding:3px 6px; font:inherit; }
@@ -76,6 +84,12 @@ const STYLES = `
   .node { cursor:pointer; }
   .node:hover circle { stroke:var(--accent); stroke-width:2; }
   .node.sel circle { stroke:var(--accent); stroke-width:3; }
+  .gnode rect { transition: stroke-width .08s; }
+  .gnode:hover rect { stroke-width:2.5; }
+  .gnode.sel rect { stroke:var(--accent) !important; stroke-width:3; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11px; color:var(--muted); }
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .legend i { width:9px; height:9px; border-radius:3px; display:inline-block; }
   .heat td { text-align:center; font-variant-numeric: tabular-nums; }
   .belief { height:8px; background:var(--line); border-radius:5px; overflow:hidden; margin-top:3px; }
   .belief > i { display:block; height:100%; background:var(--accent); }
@@ -150,6 +164,28 @@ const APP_JS: string = [
   "      svg += \"<text x='\"+(cx+12)+\"' y='\"+(cy+17)+\"' class='axis'>\"+esc((e.node_kind||'')+(e.value!=null?(' \\u00b7 '+num(e.value)):''))+\"</text></g>\"; });",
   "    svg += \"</svg>\"; byId('tree').innerHTML = svg; }",
   "",
+  "  // ---- knowledge graph (paper -> claim -> experiment, built CLI-free) ----",
+  "  var GTYPE = {paper:'#8250df', claim:'#0969da', experiment:'#1a7f37'};",
+  "  var GEDGE = {evidenced:'var(--dim)', tested:'var(--border)', parent:'var(--accent)'};",
+  "  function gRank(n){ if(n.type==='paper') return 0; if(n.type==='claim') return 1; return 2+(n.depth||0); }",
+  "  function renderGraph(){ var g=state.lineage||{nodes:[],edges:[]}; var nodes=g.nodes||[], edges=g.edges||[];",
+  "    if(nodes.length===0){ byId('graph').innerHTML=\"<div class='empty'>The knowledge graph appears once papers, claims and experiments are recorded.</div>\"; return; }",
+  "    var cols={}, maxRank=0; nodes.forEach(function(n){ var r=gRank(n); (cols[r]=cols[r]||[]).push(n); if(r>maxRank) maxRank=r; });",
+  "    var colW=190, rowH=30, padX=14, padY=16, nodeW=156; var pos={}, maxRows=1;",
+  "    for(var r=0;r<=maxRank;r++){ var list=cols[r]||[]; if(list.length>maxRows) maxRows=list.length; list.forEach(function(n,i){ pos[n.id]={x:padX+r*colW, y:padY+i*rowH+rowH/2}; }); }",
+  "    var W=padX*2+maxRank*colW+nodeW, H=padY*2+maxRows*rowH; var minH=Math.min(Math.max(H,140),520);",
+  "    var svg=\"<svg viewBox='0 0 \"+W+\" \"+H+\"' width='100%' preserveAspectRatio='xMinYMin meet' style='min-height:\"+minH+\"px'>\";",
+  "    edges.forEach(function(e){ var a=pos[e.source], b=pos[e.target]; if(!a||!b) return; var dash=e.kind==='evidenced'?\" stroke-dasharray='3 3'\":''; var sx=a.x, sy=a.y, tx=b.x+nodeW, ty=b.y; svg += \"<path d='M\"+sx+\",\"+sy+\" C\"+(sx-colW/3).toFixed(1)+\",\"+sy+\" \"+(tx+colW/3).toFixed(1)+\",\"+ty+\" \"+tx+\",\"+ty+\"' fill='none' stroke='\"+(GEDGE[e.kind]||'var(--border)')+\"'\"+dash+\"/>\"; });",
+  "    nodes.forEach(function(n){ var p=pos[n.id]; if(!p) return; var fill = n.type==='experiment'?(OUTCOME[n.outcome]||'#57606a'):GTYPE[n.type]; var sel=(ui.selected===n.id)?' sel':''; var clk=(n.type==='experiment'); var label=(n.title||n.id); if(label.length>22) label=label.slice(0,21)+'\\u2026';",
+  "      var tip=(n.title||n.id)+(n.value!=null?(' \\u00b7 '+num(n.value)):'')+(n.belief!=null?(' \\u00b7 belief '+Math.round(n.belief*100)+'%'):'')+(n.state?(' \\u00b7 '+n.state):'');",
+  "      svg += \"<g class='gnode\"+sel+\"' data-label='\"+esc(tip)+\"'\"+(clk?(\" style='cursor:pointer' onclick=\\\"VKF.sel('\"+esc(n.id)+\"')\\\"\"):'')+\">\";",
+  "      svg += \"<rect x='\"+p.x+\"' y='\"+(p.y-10)+\"' rx='5' width='\"+nodeW+\"' height='20' fill='var(--panel)' stroke='\"+fill+\"' stroke-width='1.5'/>\";",
+  "      svg += \"<circle cx='\"+(p.x+11)+\"' cy='\"+p.y+\"' r='4' fill='\"+fill+\"'/>\";",
+  "      svg += \"<text x='\"+(p.x+21)+\"' y='\"+(p.y+4)+\"' style='font-size:11px;fill:var(--fg)'>\"+esc(label)+\"</text></g>\"; });",
+  "    svg += \"</svg>\";",
+  "    var legend = \"<div class='legend'><span><i style='background:\"+GTYPE.paper+\"'></i>paper</span><span><i style='background:\"+GTYPE.claim+\"'></i>claim</span><span><i style='background:\"+GTYPE.experiment+\"'></i>experiment</span><span class='dim'>edges: claim\\u2192paper (evidence), experiment\\u2192claim (tested), experiment\\u2192parent (branch)</span></div>\";",
+  "    byId('graph').innerHTML = svg + legend; bindTips(byId('graph'),'.gnode'); }",
+  "",
   "  // ---- detail panel ----",
   "  function renderDetail(){ var box=byId('detail'); if(!ui.selected){ box.innerHTML=\"<div class='dim'>Click a node in the tree to inspect it.</div>\"; return; } var e=expsById()[ui.selected]; if(!e){ box.innerHTML=\"<div class='dim'>(node not found)</div>\"; return; }",
   "    var rows=''; rows += drow('id', e.id); rows += drow('outcome', e.outcome + (e.kept?' (kept)':'')); rows += drow('node', (e.node_kind||'\\u2014')+' \\u00b7 depth '+(e.depth||0)); rows += drow('parent', e.parent_id||'root'); rows += drow('claim', e.claim_id||'\\u2014'); rows += drow('value', num(e.value)+(e.baseline!=null?(' (baseline '+num(e.baseline)+')'):'')); if(e.lever||e.altitude) rows += drow('bucket', (e.lever||'?')+' \\u00b7 '+(e.altitude||'?')); if(e.commit) rows += drow('commit', e.commit);",
@@ -181,14 +217,14 @@ const APP_JS: string = [
   "    byId('table').innerHTML = \"<table><thead><tr>\"+head+\"</tr></thead><tbody>\"+body+\"</tbody></table>\"; }",
   "",
   "  // ---- chart tooltip ----",
-  "  function bindTips(scope){ var tip=byId('tip'); scope.querySelectorAll('.pt').forEach(function(c){ c.addEventListener('mousemove',function(ev){ tip.textContent=c.getAttribute('data-label'); tip.style.left=(ev.clientX+12)+'px'; tip.style.top=(ev.clientY+12)+'px'; tip.style.opacity=1; }); c.addEventListener('mouseleave',function(){ tip.style.opacity=0; }); }); }",
+  "  function bindTips(scope,sel){ var tip=byId('tip'); scope.querySelectorAll(sel||'.pt').forEach(function(c){ c.addEventListener('mousemove',function(ev){ tip.textContent=c.getAttribute('data-label'); tip.style.left=(ev.clientX+12)+'px'; tip.style.top=(ev.clientY+12)+'px'; tip.style.opacity=1; }); c.addEventListener('mouseleave',function(){ tip.style.opacity=0; }); }); }",
   "",
-  "  function render(){ ensureSeries(); renderCards(); renderSeriesToggles(); renderChart(); renderTree(); renderDetail(); renderHeatmap(); renderMemory(); renderFilters(); renderTable(); var g=byId('gen'); if(g) g.textContent=state.generatedAt||''; var v=byId('ver'); if(v) v.textContent=state.version?('v'+state.version):''; }",
+  "  function render(){ ensureSeries(); renderCards(); renderSeriesToggles(); renderChart(); renderTree(); renderGraph(); renderDetail(); renderHeatmap(); renderMemory(); renderFilters(); renderTable(); var g=byId('gen'); if(g) g.textContent=state.generatedAt||''; var v=byId('ver'); if(v) v.textContent=state.version?('v'+state.version):''; }",
   "",
   "  window.VKF = {",
   "    series:function(n,on){ ui.series[n]=on; saveUI(); renderSeriesToggles(); renderChart(); },",
   "    log:function(on){ ui.log=on; saveUI(); renderChart(); },",
-  "    sel:function(id){ ui.selected=id; saveUI(); renderTree(); renderDetail(); },",
+  "    sel:function(id){ ui.selected=id; saveUI(); renderTree(); renderGraph(); renderDetail(); },",
   "    filter:function(k,v){ ui[k]=v; saveUI(); renderTable(); },",
   "    sort:function(k){ if(ui.sortKey===k) ui.sortDir=-ui.sortDir; else { ui.sortKey=k; ui.sortDir=1; } saveUI(); renderTable(); },",
   "    theme:function(){ ui.theme = ui.theme==='dark'?'light':(ui.theme==='light'?'auto':'dark'); saveUI(); applyTheme(); var b=byId('themebtn'); if(b) b.textContent='Theme: '+ui.theme; }",
@@ -231,40 +267,54 @@ export function renderDashboardHtml(data: DashboardData): string {
 
   <div id="cards" class="cards"></div>
 
-  <div class="grid2" style="margin-top:10px">
-    <div>
+  <div class="grid main">
+    <section>
       <h2>${escapeHtml(data.metricName)} over time</h2>
       <div class="panel">
         <div id="series" class="controls"></div>
         <div id="chart"></div>
       </div>
-
-      <h2>Search tree</h2>
-      <div class="panel" style="overflow:auto; max-height:560px"><div id="tree"></div></div>
-    </div>
-
-    <div>
+    </section>
+    <section>
       <h2>Selected node</h2>
       <div class="panel"><div id="detail"></div></div>
-
-      <h2>Coverage</h2>
-      <div class="panel"><div id="heatmap"></div></div>
-
-      <h2>Research memory</h2>
-      <div class="panel"><div id="memory"></div></div>
-    </div>
+    </section>
   </div>
 
-  <h2>Experiments</h2>
-  <div class="panel">
-    <div id="filters" class="controls"></div>
-    <div id="table"></div>
+  <div class="grid duo">
+    <section>
+      <h2>Search tree</h2>
+      <div class="panel scroll"><div id="tree"></div></div>
+    </section>
+    <section>
+      <div class="h2row"><h2>Knowledge graph</h2><span class="pill">paper → claim → experiment</span></div>
+      <div class="panel scroll"><div id="graph"></div></div>
+    </section>
+  </div>
+
+  <div class="grid split">
+    <section>
+      <h2>Coverage</h2>
+      <div class="panel"><div id="heatmap"></div></div>
+    </section>
+    <section>
+      <h2>Research memory</h2>
+      <div class="panel"><div id="memory"></div></div>
+    </section>
+  </div>
+
+  <div style="margin-top:18px">
+    <h2>Experiments</h2>
+    <div class="panel">
+      <div id="filters" class="controls"></div>
+      <div id="table"></div>
+    </div>
   </div>
 
   <footer>
     <span id="ver" class="pill"></span>
     Generated <span id="gen"></span> ·
-    full idea-lineage graph (paper → claim → experiment): open <span class="mono">dashboard.html</span> (<span class="mono">vkf html</span>).
+    richer typed lineage with conflict edges: open <span class="mono">dashboard.html</span> (<span class="mono">vkf html</span>).
   </footer>
 </div>
 <script id="vkf-data" type="application/json">${embedJson(data)}</script>
