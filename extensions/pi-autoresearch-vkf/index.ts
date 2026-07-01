@@ -41,7 +41,7 @@ import {
   type MemoryState,
   type Verification,
 } from "./cards.ts";
-import { makeConfig, readConfig, researchMode, writeConfig } from "./config.ts";
+import { autonomyMode, makeConfig, readConfig, researchMode, sessionMode, writeConfig, type ResearchConfig } from "./config.ts";
 import { buildFullscreenLines } from "./dashboard.ts";
 import {
   appendExperiment,
@@ -60,7 +60,7 @@ import { buildDashboardData } from "./progress_data.ts";
 import { renderDashboardHtml } from "./progress_html.ts";
 import { bucketKey, rankIdeas, selectBalanced, type IdeaInput } from "./scoring.ts";
 import { bestNode, depths, selectExpansion } from "./tree.ts";
-import { findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
+import { findCompositions, findContradictions, findTransfers, type CardLike } from "./synthesis.ts";
 import { ensureSessionDirs, globalRoot, hasGlobalMemory, hasSession, memoryPaths, sessionPaths } from "./paths.ts";
 import { refreshWidget, textResult, WIDGET_KEY } from "./render.ts";
 import { resolveRoot, runtimeStore, sessionKey } from "./runtime.ts";
@@ -70,7 +70,7 @@ import * as vkf from "./vkf.ts";
 const MAX_OUTPUT_CHARS = 16_000;
 
 /** Package version, surfaced in the dashboard footer. Keep in sync with package.json. */
-const VERSION = "0.9.1";
+const VERSION = "0.10.0";
 
 const truncate = (s: string): string =>
   s.length <= MAX_OUTPUT_CHARS
@@ -94,6 +94,33 @@ function validationNote(root: string, profile: number): string {
   const errs = (report.issues ?? []).filter((i) => i.level === "ERROR").slice(0, 5);
   const lines = errs.map((e) => `   - ${e.path}: ${e.message}`);
   return `✗ vkf validate found ${report.summary?.ERROR ?? "?"} error(s):\n${lines.join("\n")}`;
+}
+
+/**
+ * The autonomy directive appended to loop-tool outputs. Skill text fades out of
+ * a long context; tool results recur every turn, so this line is what actually
+ * keeps the loop running unattended. It re-asserts the contract (continue
+ * without asking), the budget state, and the user's brake (the STOP file).
+ */
+function continuationNote(root: string, config: ResearchConfig): string {
+  const sp = sessionPaths(root);
+  if (existsSync(sp.stop)) {
+    return `⏸ STOP requested (${sp.stop} exists) — halt the loop now, report with autoresearch-vkf-research-report, and wait for the user. (Deleting the file resumes.)`;
+  }
+  const used = readExperiments(sp.experiments).length;
+  const max = config.maxIterations;
+  if (max !== undefined && used >= max) {
+    return `■ Budget exhausted (${used}/${max} iterations) — stop and hand off to autoresearch-vkf-research-report.`;
+  }
+  const budget = max !== undefined ? `iteration ${used}/${max}` : `iteration ${used} (no cap set)`;
+  if (autonomyMode(config) === "confirm-each") {
+    return `Autonomy: confirm-each — ${budget}. Check in with the user before the next experiment.`;
+  }
+  return (
+    `▶ Autonomy: continuous (pre-authorized) — ${budget}. Do NOT pause to ask permission or offer options: ` +
+    `continue the loop now (recall/refresh research → plan_next_step → implement → vkf_run_experiment → vkf_log_experiment). ` +
+    `Stop only when the budget is exhausted, the goal is met, the loop is blocked on something only the user can do, or ${basename(sp.stop)} appears in the session dir.`
+  );
 }
 
 /**
@@ -131,11 +158,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
   const InitParams = Type.Object({
     name: Type.String({ description: "Human-readable session name, e.g. 'Speed up the test suite'." }),
     goal: Type.String({ description: "The research goal / optimization objective, in words." }),
-    command: Type.String({ description: "Shell command (run via `bash -lc`) that prints `METRIC <name>=<number>` lines. Often a wrapper that calls .auto/measure.sh." }),
-    metric_name: Type.String({ description: "Name of the metric to optimize, matching the METRIC line, e.g. 'wall_clock_s'." }),
+    command: Type.Optional(Type.String({ description: "Shell command (run via `bash -lc`) that prints `METRIC <name>=<number>` lines. Often a wrapper that calls .auto/measure.sh. OMIT for an ideation session (no measurable target yet) — the deliverable is then a ranked research plan via draft_research_plan." })),
+    metric_name: Type.Optional(Type.String({ description: "Name of the metric to optimize, matching the METRIC line, e.g. 'wall_clock_s'. Omit for ideation sessions." })),
     direction: Type.Optional(Type.Union([Type.Literal("higher"), Type.Literal("lower")], { description: "Which direction is an improvement. Default 'higher'." })),
     files_in_scope: Type.Optional(Type.Array(Type.String(), { description: "Files/globs the loop may modify." })),
     max_iterations: Type.Optional(Type.Number({ description: "Optional cap on loop iterations." })),
+    autonomy: Type.Optional(Type.Union([Type.Literal("continuous"), Type.Literal("confirm-each")], { description: "Loop autonomy. 'continuous' (default): once inputs are confirmed the loop runs without asking — the user's brake is the session STOP file. 'confirm-each': check in before every experiment." })),
     memory_profile: Type.Optional(Type.Union([Type.Literal(1), Type.Literal(2)], { description: "VKF conformance profile for the memory bundle (1 governed, 2 verified). Default 1." })),
     working_dir: Type.Optional(Type.String({ description: "Directory experiment commands run in. Defaults to the project root." })),
   });
@@ -144,7 +172,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     name: "init_research",
     label: "Init research",
     description:
-      "Scaffold a .autoresearch-vkf/ workspace (session/ + memory/ VKF bundle) for an autoresearch loop. Idempotent: an existing session is reported, not overwritten. Call once at the start.",
+      "Scaffold a .autoresearch-vkf/ workspace (session/ + memory/ VKF bundle) for an autoresearch loop. Idempotent: an existing session is reported, not overwritten. Call once at the start. With a measure `command` this is an optimize session; without one it's an *ideation* session whose deliverable is a ranked research plan (draft_research_plan).",
     parameters: InitParams,
     async execute(_id, params: Static<typeof InitParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ created: boolean }>> {
       const root = params.working_dir ?? ctx.cwd;
@@ -169,11 +197,12 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         workingDir: params.working_dir,
         maxIterations: params.max_iterations,
         memoryProfile: params.memory_profile,
+        autonomy: params.autonomy,
       });
       writeConfig(sp.config, config);
       writeExperiments(sp.experiments, []);
-      writeFileIfAbsent(sp.measure, measureStub(params.command));
-      writeFileIfAbsent(sp.prompt, promptStub(config.name, config.goal, config.metricName, config.direction));
+      if (sessionMode(config) === "optimize") writeFileIfAbsent(sp.measure, measureStub(config.command));
+      writeFileIfAbsent(sp.prompt, promptStub(config));
       const fresh = scaffoldMemoryBundle(root, params.name, config.memoryProfile);
       appendLog(sp.log, { event: "init", name: config.name, goal: config.goal });
 
@@ -186,9 +215,17 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           `Initialized research session "${config.name}".`,
           `Session dir: ${sp.dir}`,
           `Memory bundle: ${memoryPaths(root).dir} ${fresh ? "(new)" : "(existing)"} — profile ${config.memoryProfile}.`,
-          `Optimizing ${config.metricName} (${config.direction} is better).`,
+          sessionMode(config) === "optimize"
+            ? `Optimizing ${config.metricName} (${config.direction} is better).`
+            : "Ideation session (no measure command) — the deliverable is a ranked research plan.",
+          `Autonomy: ${autonomyMode(config)}${config.maxIterations ? ` · budget ${config.maxIterations} iterations` : ""}.` +
+            (autonomyMode(config) === "continuous"
+              ? ` The loop is pre-authorized — don't pause to ask between iterations; the user can halt it anytime by creating ${sp.stop}.`
+              : ""),
           "",
-          "Next: gather literature (autoresearch-vkf-knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → vkf_run_experiment → vkf_log_experiment.",
+          sessionMode(config) === "optimize"
+            ? "Next: gather literature (autoresearch-vkf-knowledge-gather skill) → remember_claim candidates → verify_claim → recall_memory to pick an idea → vkf_run_experiment → vkf_log_experiment."
+            : "Next: recall_memory → gather literature (autoresearch-vkf-knowledge-gather) → remember_claim/verify_claim → synthesize (find_contradictions / find_transfers / find_compositions) → draft_research_plan.",
         ].join("\n"),
         { created: true },
       );
@@ -714,6 +751,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           ...lines,
           "",
           "Pick one, implement the smallest falsifying change, run it, then vkf_log_experiment with that parent_id + node_kind. Spend the reserved explore picks across the run — don't collapse onto improve every time.",
+          "",
+          continuationNote(root, config),
         ].join("\n"),
         { picks: picks.length, top: picks[0]?.r.id },
       );
@@ -765,6 +804,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       conflicts_with: Array.isArray(c.meta["conflicts_with"])
         ? (c.meta["conflicts_with"] as unknown[]).map(s)
         : [],
+      lever: c.meta["lever"] ? s(c.meta["lever"]) : undefined,
     };
   };
 
@@ -850,6 +890,179 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
     },
   });
 
+  // ── find_compositions ────────────────────────────────────────────────────────
+  const CompositionParams = Type.Object({
+    goal: Type.Optional(Type.String({ description: "Goal text to gauge relevance against. Defaults to the session goal." })),
+    limit: Type.Optional(Type.Number({ description: "Max compositions to return. Default 8." })),
+  });
+  pi.registerTool({
+    name: "find_compositions",
+    label: "Find compositions",
+    description:
+      "Combine trusted claims into novel hypotheses: pairs whose mechanisms are complementary (both goal-relevant, low mechanism overlap, different levers preferred). A composition is an idea no single source states — retrieval alone can never propose it. Turn a good one into a claim with remember_claim (origin: 'synthesis', derived_from: both ids).",
+    parameters: CompositionParams,
+    async execute(_id, params: Static<typeof CompositionParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ compositions: number; top?: string }>> {
+      const root = resolveRoot(ctx);
+      requireSession(root);
+      const config = readConfig(sessionPaths(root).config)!;
+      const limit = params.limit ?? 8;
+      const cards = listCards(root, { type: "claim" }).map(toCardLike);
+      const comps = findCompositions(params.goal ?? config.goal, cards);
+      if (comps.length === 0) {
+        return textResult(
+          "No composable pairs found — compositions need 2+ *trusted* (source_verified+) claims with stated mechanisms. Verify more claims first.",
+          { compositions: 0 },
+        );
+      }
+      const pct = (n: number): string => (n * 100).toFixed(0) + "%";
+      const lines = comps.slice(0, limit).map((c, i) =>
+        `${i + 1}. [${c.score.toFixed(2)}] ${c.a} + ${c.b}\n     ${c.titleA}  ×  ${c.titleB}\n     relevance ${pct(c.goal_relevance)} · mechanism overlap ${pct(c.mechanism_overlap)} (lower = more complementary)`,
+      );
+      refreshWidget(ctx, root);
+      return textResult(
+        [
+          `Found ${comps.length} composition candidate(s):`,
+          "",
+          ...lines,
+          "",
+          "Write the promising ones into memory with remember_claim (origin: 'synthesis', derived_from: [both parent ids]) so they can be scored and tested.",
+        ].join("\n"),
+        { compositions: comps.length, top: comps[0] ? `${comps[0].a}+${comps[0].b}` : undefined },
+      );
+    },
+  });
+
+  // ── draft_research_plan ──────────────────────────────────────────────────────
+  const PlanDraftParams = Type.Object({
+    query: Type.Optional(Type.String({ description: "Restrict the plan to ideas matching this focus. Default: everything relevant to the session goal." })),
+    limit: Type.Optional(Type.Number({ description: "Max ranked hypotheses in the plan. Default 10." })),
+  });
+  pi.registerTool({
+    name: "draft_research_plan",
+    label: "Draft research plan",
+    description:
+      "Turn the knowledge base into a ranked research plan: the top untested hypotheses (with mechanism, evidence trail, novelty basis, and a proposed falsifying experiment) plus the synthesis opportunities (contradictions to settle, cross-claim compositions). Writes .autoresearch-vkf/session/research_plan.md and returns it. The deliverable of an ideation session; also useful mid-loop to re-plan the agenda.",
+    parameters: PlanDraftParams,
+    async execute(_id, params: Static<typeof PlanDraftParams>, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ hypotheses: number; path: string }>> {
+      const root = resolveRoot(ctx);
+      const sp = sessionPaths(root);
+      requireSession(root);
+      const config = readConfig(sp.config)!;
+      const limit = params.limit ?? 10;
+
+      const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+      const str = (v: unknown): string => String(v ?? "");
+      const optStr = (v: unknown): string | undefined => (v == null ? undefined : String(v));
+      const q = params.query?.toLowerCase().trim();
+      const cardText = (c: ReturnType<typeof listCards>[number]): string =>
+        [c.meta["title"], c.meta["mechanism"], c.meta["context"], c.body].map(str).join(" ");
+
+      const claims = listCards(root, { type: "claim" });
+      const experimentCards = listCards(root, { type: "experiment" });
+      const untestedStates = new Set<MemoryState>(["candidate", "source_verified"]);
+      const exploredStates = new Set<MemoryState>(["locally_tested", "replicated", "contradicted"]);
+      const explored: string[] = [
+        ...experimentCards.map(cardText),
+        ...claims.filter((c) => exploredStates.has(c.meta["memory_state"] as MemoryState)).map(cardText),
+      ];
+      const bucketCounts: Record<string, number> = {};
+      for (const e of experimentCards) {
+        const key = bucketKey(optStr(e.meta["lever"]), optStr(e.meta["altitude"]));
+        bucketCounts[key] = (bucketCounts[key] ?? 0) + 1;
+      }
+      const staleIds = staleIdSet(root);
+      const claimById = new Map(claims.map((c) => [str(c.meta["id"]), c]));
+
+      const ideas: IdeaInput[] = claims
+        .filter((c) => untestedStates.has(c.meta["memory_state"] as MemoryState))
+        .filter((c) => !q || cardText(c).toLowerCase().includes(q))
+        .map((c) => ({
+          id: str(c.meta["id"]),
+          title: str(c.meta["title"]),
+          text: cardText(c),
+          belief: num(c.meta["belief"]) ?? 0.5,
+          verification_level: c.meta["verification_level"] as IdeaInput["verification_level"],
+          recency_score: num(c.meta["recency_score"]),
+          reliability_score: num(c.meta["reliability_score"]),
+          expected_value: num(c.meta["expected_value"]),
+          feasibility: num(c.meta["feasibility"]),
+          info_gain: num(c.meta["info_gain"]),
+          implementation_cost: num(c.meta["implementation_cost"]),
+          lever: optStr(c.meta["lever"]),
+          altitude: optStr(c.meta["altitude"]),
+          stale: staleIds.has(str(c.meta["id"])),
+        }));
+
+      const mode = researchMode(config);
+      const ranked = rankIdeas(ideas, {
+        explored,
+        bucketCounts,
+        exploredTotal: experimentCards.length,
+        altitudePreference: mode.altitudePreference,
+      }).slice(0, limit);
+
+      const cardLikes = claims.map(toCardLike);
+      const tensions = findContradictions(cardLikes).slice(0, 6);
+      const comps = findCompositions(config.goal, cardLikes).slice(0, 6);
+
+      const pct = (n: number): string => (n * 100).toFixed(0) + "%";
+      const hypothesisBlock = (r: (typeof ranked)[number], i: number): string => {
+        const c = claimById.get(r.id);
+        const mech = optStr(c?.meta["mechanism"]);
+        const recipe = optStr(c?.meta["implementation_recipe"]);
+        const state = optStr(c?.meta["memory_state"]) ?? "candidate";
+        const sources = (Array.isArray(c?.meta["depends_on"]) ? (c!.meta["depends_on"] as unknown[]) : [])
+          .map(String)
+          .filter((d) => d.startsWith("paper:"));
+        return [
+          `### ${i + 1}. ${r.title}`,
+          "",
+          `- **id:** \`${r.id}\` (${state}${sources.length ? `, sources: ${sources.join(", ")}` : ""})`,
+          `- **priority:** ${r.priority.toFixed(2)} — EV ${pct(r.factors.expected_value)} · feasibility ${pct(r.factors.feasibility)} · evidence ${pct(r.factors.evidence_strength)} · novelty ${pct(r.factors.novelty)} · info-gain ${pct(r.factors.info_gain)}`,
+          ...(mech ? [`- **mechanism:** ${mech}`] : []),
+          `- **novelty basis:** ${r.factors.structural_novelty > 0.6 ? "opens an under-explored" : "extends the"} \`${r.bucket}\` bucket${r.max_similarity > 0.5 ? ` (⚠ ${pct(r.max_similarity)} similar to explored work)` : ""}`,
+          `- **proposed experiment:** ${recipe ?? "define the smallest falsifying change and a METRIC to judge it by"}`,
+        ].join("\n");
+      };
+
+      const planLines: string[] = [
+        `# Research plan — ${config.name}`,
+        "",
+        `**Goal:** ${config.goal}`,
+        "",
+        `_Generated ${new Date().toISOString()} from ${claims.length} claim(s), ${experimentCards.length} experiment(s) in memory. Mode: ${mode.altitudePreference}, explore ${pct(mode.exploreFraction)}._`,
+        "",
+        "## Ranked hypotheses",
+        "",
+        ...(ranked.length ? ranked.map((r, i) => hypothesisBlock(r, i) + "\n") : ["(no untested ideas in memory — gather and verify claims first)", ""]),
+        "## Tensions to settle (each is a hypothesis seed)",
+        "",
+        ...(tensions.length ? tensions.map((t, i) => `${i + 1}. [${t.kind}] ${t.detail}\n   → ${t.question}`) : ["(none found)"]),
+        "",
+        "## Composition opportunities (novel combinations)",
+        "",
+        ...(comps.length ? comps.map((c, i) => `${i + 1}. \`${c.a}\` + \`${c.b}\` — ${c.titleA} × ${c.titleB} (score ${c.score.toFixed(2)})`) : ["(none — need 2+ trusted claims with mechanisms)"]),
+        "",
+        "## Next actions",
+        "",
+        "- Turn the strongest tension/composition into a claim: `remember_claim` (origin: contradiction/synthesis, derived_from set).",
+        "- Verify top candidates (`verify_claim`) so they can drive experiments.",
+        ...(sessionMode(config) === "optimize"
+          ? ["- Test the #1 hypothesis: `plan_next_step` → implement → `vkf_run_experiment` → `vkf_log_experiment`."]
+          : ["- When a measurable target exists, start an optimize session to test the top hypotheses."]),
+      ];
+      const plan = planLines.join("\n") + "\n";
+      writeFileSync(sp.researchPlan, plan, "utf8");
+      appendLog(sp.log, { event: "note", note: "draft_research_plan", hypotheses: ranked.length });
+      writeProgressDashboard(root);
+      refreshWidget(ctx, root);
+      return textResult(
+        truncate(plan) + `\n\nSaved to ${sp.researchPlan}.`,
+        { hypotheses: ranked.length, path: sp.researchPlan },
+      );
+    },
+  });
+
   // ── vkf_run_experiment ───────────────────────────────────────────────────────
   const RunParams = Type.Object({
     command: Type.Optional(Type.String({ description: "Command to run (via `bash -lc`). Defaults to the session's configured command." })),
@@ -869,7 +1082,19 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const sp = sessionPaths(root);
       requireSession(root);
       const config = readConfig(sp.config)!;
+      if (existsSync(sp.stop)) {
+        return textResult(
+          `⏸ Not running: the user requested a stop (${sp.stop} exists). Halt the loop, report with autoresearch-vkf-research-report, and wait. Deleting the file resumes the loop.`,
+          { code: -1, metrics: {} },
+        );
+      }
       const command = params.command ?? config.command;
+      if (!command.trim()) {
+        return textResult(
+          "This is an ideation session — no measure command is configured. The deliverable is a research plan (draft_research_plan). To start experimenting, give init_research (in a fresh workspace) or the session config a measure command.",
+          { code: -1, metrics: {} },
+        );
+      }
       const cwd = params.cwd ?? config.workingDir ?? root;
 
       const started = Date.now();
@@ -1064,6 +1289,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
           beliefNote,
           validationNote(root, config.memoryProfile),
           `Session: ${summary.win} win / ${summary.loss} loss / ${summary.inconclusive} inconclusive (best ${config.metricName}: ${summary.best ?? "—"}).`,
+          continuationNote(root, config),
         ]
           .filter(Boolean)
           .join("\n"),
@@ -1525,6 +1751,11 @@ function buildDashboardPayload(root: string, refreshSeconds?: number, includeGra
     goal: config.goal,
     metricName: config.metricName,
     direction: config.direction,
+    mode: sessionMode(config),
+    autonomy: autonomyMode(config),
+    maxIterations: config.maxIterations,
+    stopRequested: existsSync(sp.stop),
+    researchPlan: existsSync(sp.researchPlan) ? readFileSync(sp.researchPlan, "utf8") : undefined,
     baseline: config.baseline,
     experiments: readExperiments(sp.experiments),
     memory,
@@ -1602,18 +1833,38 @@ echo "TODO: measure and print 'METRIC <name>=<value>'"
 `;
 }
 
-function promptStub(name: string, goal: string, metric: string, direction: string): string {
-  return `# ${name}
+/**
+ * The structured handoff document. A fresh agent (after a restart or context
+ * reset) must be able to resume the loop from this file alone, so it carries the
+ * autonomy directive and a fixed schema the skills keep current — not free prose.
+ */
+function promptStub(config: ResearchConfig): string {
+  const ideate = sessionMode(config) === "ideate";
+  const autonomy =
+    autonomyMode(config) === "continuous"
+      ? `**continuous (pre-authorized)** — do not pause to ask between iterations; the user halts via \`session/STOP\`${config.maxIterations ? `; budget ${config.maxIterations} iterations` : ""}`
+      : "confirm-each — check in with the user before every experiment";
+  return `# ${config.name}
 
-**Goal:** ${goal}
+**Goal:** ${config.goal}
 
-**Metric:** ${metric} (${direction} is better)
+**Mode:** ${ideate ? "ideation (deliverable: research_plan.md)" : `optimize — metric \`${config.metricName}\` (${config.direction} is better)`}
 
-> Living document. Keep it current so a fresh agent can continue the loop.
+**Autonomy:** ${autonomy}
 
-## What's been tried
+> Structured handoff document. Keep every section current after each iteration —
+> a fresh agent must be able to resume the loop from this file plus \`recall_memory\`.
 
-(Recorded automatically as experiments — see \`research_status\` and \`recall_memory\`.)
+## Current state
+
+- iteration: 0
+- best node: (none yet)
+- last action: initialized
+- next action: ${ideate ? "recall_memory, then gather literature" : "recall_memory, then gather literature and plan_next_step"}
+
+## Open questions
+
+(What the last result left unresolved — the next iteration's research focus.)
 
 ## Dead ends / negative results
 

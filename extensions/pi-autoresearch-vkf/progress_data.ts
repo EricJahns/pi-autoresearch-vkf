@@ -84,6 +84,16 @@ export interface DashboardData {
   goal: string;
   metricName: string;
   direction: MetricDirection;
+  /** Session kind: classic metric loop, or ideation (research-plan) session. */
+  mode?: "optimize" | "ideate";
+  /** Loop autonomy ("continuous" | "confirm-each"), for the status line. */
+  autonomy?: string;
+  /** Iteration budget, when set — drives the budget burn-down. */
+  maxIterations?: number;
+  /** True when the session STOP file exists (user asked the loop to halt). */
+  stopRequested?: boolean;
+  /** The current research plan markdown (session/research_plan.md), if drafted. */
+  researchPlan?: string;
   baseline?: number;
   best?: number;
   /** Every metric name seen across runs, primary first — drives the series toggles. */
@@ -110,6 +120,11 @@ export interface BuildDashboardInput {
   goal: string;
   metricName: string;
   direction: MetricDirection;
+  mode?: "optimize" | "ideate";
+  autonomy?: string;
+  maxIterations?: number;
+  stopRequested?: boolean;
+  researchPlan?: string;
   baseline?: number;
   experiments: readonly Experiment[];
   memory: Record<string, number>;
@@ -212,6 +227,11 @@ export function buildDashboardData(input: BuildDashboardInput): DashboardData {
     goal: input.goal,
     metricName: input.metricName,
     direction: input.direction,
+    mode: input.mode,
+    autonomy: input.autonomy,
+    maxIterations: input.maxIterations,
+    stopRequested: input.stopRequested,
+    researchPlan: input.researchPlan,
     baseline: input.baseline,
     best: bestValue(input.experiments, input.direction),
     metricNames,

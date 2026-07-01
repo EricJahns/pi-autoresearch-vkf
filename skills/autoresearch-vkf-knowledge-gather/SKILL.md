@@ -15,6 +15,12 @@ Use `WebSearch` to find sources and `WebFetch` to read them. No API keys, no
 paid services, no extra setup — just the agent's built-in web tools against free,
 openly accessible databases.
 
+**Fan out when you can.** Sub-topics and source families (arXiv API, Semantic
+Scholar, OpenAlex, GitHub) are independent — if the host supports sub-agents or
+background tasks, run one gatherer per sub-topic in parallel, each returning
+candidates in the "What to collect" shape below. Report the merged set back to
+the orchestrator; do not write to memory from inside a gatherer.
+
 Search by the *mechanism* of your problem, not just keywords. Keyword search finds
 the obvious; mechanism search finds surprising analogies (e.g. "methods that
 stabilize discrete nonlinear dynamical systems during gradient training", not

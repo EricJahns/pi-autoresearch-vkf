@@ -72,6 +72,17 @@ gather literature → extract & verify claims → loop (recall → experiment �
 write-back) → report. All state lives in one self-contained `.autoresearch-vkf/`
 folder at the project root, so work **survives restarts and context resets**.
 
+The loop runs **autonomously by default**: after the one up-front confirmation it
+keeps iterating without asking (the tools re-assert this every step). To pause it
+at any time, create the STOP file — `touch .autoresearch-vkf/session/STOP` — and
+the loop halts and reports; delete it to resume. Prefer to be asked each step?
+Init with `autonomy: "confirm-each"`.
+
+No measurable metric yet? Ask for **research plans/ideas instead** — an ideation
+session (init without a command) mines the knowledge base with contradiction /
+transfer / composition synthesis and delivers a ranked, evidenced research agenda
+in `session/research_plan.md`.
+
 > **Knowledge ingestion** uses the agent's built-in `WebSearch` + `WebFetch`
 > against free, open databases (arXiv, Semantic Scholar, OpenAlex, Crossref) — no
 > API keys, no paid services, no MCP setup. No web tools? Paste papers/PDFs/findings
@@ -216,7 +227,7 @@ Three live views, in increasing detail:
 
 | Tool | What it does |
 |------|--------------|
-| `init_research` | Scaffold the `.autoresearch-vkf/` workspace (session + memory VKF bundle). |
+| `init_research` | Scaffold the `.autoresearch-vkf/` workspace (session + memory VKF bundle). Takes `autonomy` (`continuous` default / `confirm-each`); omit the measure `command` for an **ideation** session. |
 | `remember_claim` | Stage a literature-derived candidate claim (+ its source paper). |
 | `verify_claim` | Advance/downgrade a card's trust lifecycle (audited). |
 | `recall_memory` | Query memory (project / global / both): trusted claims, candidates, prior experiments, negatives, conflicts. |
@@ -225,6 +236,8 @@ Three live views, in increasing detail:
 | `set_research_mode` | Steer the explore/exploit budget and altitude bias mid-run (e.g. switch to `tuning` when the user explicitly wants a sweep). |
 | `find_contradictions` | Mine memory for tensions between claims — each a seed for a novel hypothesis. |
 | `find_transfers` | Cross-domain mechanism search: same *how*, different *where*. |
+| `find_compositions` | Combine trusted claims with complementary mechanisms into hypotheses no single source states. |
+| `draft_research_plan` | Write `session/research_plan.md`: the ranked hypothesis portfolio (mechanism, evidence trail, novelty basis, proposed experiment) + open tensions and compositions. |
 | `vkf_run_experiment` | Run the measurement command; capture `METRIC name=value`. |
 | `vkf_log_experiment` | Record a result as a tree node (branches from `parent_id`, judged vs the parent's value), write it back to memory with a profile-2 reproduction block, update belief from accumulated evidence & lifecycle. |
 | `promote_to_global` | Copy a trusted card into the cross-project global memory. |
@@ -247,6 +260,7 @@ Three live views, in increasing detail:
 | `autoresearch-vkf-cross-domain-transfer` | Import a mechanism from another field. |
 | `autoresearch-vkf-idea-tournament` | Multi-perspective debate to pick the 2–3 ideas worth testing. |
 | `autoresearch-vkf-hypothesis-loop` | Pick the next idea and run the smallest falsifying experiment. |
+| `autoresearch-vkf-research-plan` | Ideation mode: turn the knowledge base into a ranked research agenda (no metric needed). |
 | `autoresearch-vkf-research-report` | The auditable lineage report. |
 
 </details>

@@ -20,6 +20,16 @@ Gather candidates from every source:
 
 ## Judge each finalist from five perspectives
 
+**Run this as a real debate when the host supports sub-agents/tasks** (pi tasks,
+Claude Code sub-agents, etc.): spawn one agent per role, give each ONLY the
+candidate list plus its role brief below, and have each return per-idea scores +
+rationales *independently* — independence is what makes the aggregate worth more
+than one agent role-playing five hats. If a role's verdict surprises you, let an
+advocate agent (argues *for* the idea) and the Skeptic exchange one rebuttal
+round before you aggregate. When no sub-agents are available, fall back to
+playing the roles yourself, one full pass per role — don't blend them into a
+single mushy judgment.
+
 For the top ~6 candidates, score each (1–5) from each role, and write a one-line
 rationale per role:
 
@@ -44,6 +54,9 @@ the numbers miss — especially the Skeptic's failure-mode and gaming checks.
 - For ideas you reject, say why in the card `notes` (or downgrade via
   `verify_claim`) so the tournament's reasoning is remembered and they aren't
   re-litigated next round.
+- Store the debate outcome on the winners too: a one-line summary of the
+  strongest objection and why it didn't hold becomes part of the card's
+  audit trail (notes), so the eventual experiment knows what to guard against.
 
 Hand the 2–3 winners to the **autoresearch-vkf-hypothesis-loop**.
 
