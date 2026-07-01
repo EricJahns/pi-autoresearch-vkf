@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.10.0
+
+Autonomy, ideation mode, and multi-agent research. The loop now keeps itself
+running, can produce a research *plan* (not just a metric delta), and avoids
+hyperparameter tweaks unless explicitly asked to tune.
+
+- **Autonomy contract.** New `autonomy: "continuous" | "confirm-each"` on
+  `init_research` (default continuous). In continuous mode the loop is
+  pre-authorized: `plan_next_step` and `vkf_log_experiment` now end every result
+  with a continuation directive + budget state (`iteration N/M … continue now`),
+  so the agent no longer stalls asking "should I continue?" — the directive
+  recurs in tool output where skill prose fades from context. The user's brake
+  is a **STOP sentinel** (`.autoresearch-vkf/session/STOP`): `vkf_run_experiment`
+  refuses to run while it exists and the loop tools tell the agent to halt and
+  report. The orchestrator + hypothesis-loop skills carry the matching contract
+  (valid stop conditions only; check-ins are a contract violation).
+- **Novel-over-knobs by default.** The default (`high`) altitude mode now
+  penalizes hyperparameter-altitude ideas ~3× (affinity 0.7 → 0.35), and the
+  skills forbid proposing knob tweaks at all unless the user explicitly asked
+  for tuning (`tuning` mode restores parity) or a knob is demonstrably the
+  limiting factor.
+- **Ideation mode + `draft_research_plan`.** `init_research` without a
+  `command` starts an *ideation* session: no measurement loop; the deliverable
+  is `session/research_plan.md` — a ranked hypothesis portfolio (mechanism,
+  evidence trail, novelty basis, proposed falsifying experiment) plus open
+  tensions and composition opportunities. New skill
+  `autoresearch-vkf-research-plan` orchestrates it.
+- **`find_compositions` (synthesis).** New pure `findCompositions` + tool:
+  pairs of *trusted* claims with complementary mechanisms (goal-relevant, low
+  mechanism overlap, different levers boosted) — hypotheses no single source
+  states, the kind the benchmark's optima are made of.
+- **Multi-agent research.** Skills now fan out independent work when the host
+  supports sub-agents (parallel gatherers per sub-topic, parallel claim
+  verification, idea-tournament roles as truly independent judges with an
+  advocate/skeptic rebuttal round); memory writes stay with the spine.
+- **Structured handoff.** `session/prompt.md` is now a fixed-schema handoff
+  (Current state / Open questions / Dead ends / Key wins / Open directions)
+  carrying the autonomy directive, so a fresh agent resumes — and keeps going —
+  from the file alone.
+- **UI.** Widget + Alt+G overlay gain a loop-state line (mode · autonomy ·
+  iteration N/M, `⏸ STOP requested`, `★ new best`); the browser dashboard gains
+  the same status header with a budget burn-down bar and a Research-plan panel
+  that live-refreshes with `data.json`.
+
 ## 0.9.1
 
 Dashboard redesign: wider, denser, and the idea-lineage graph is now built in.

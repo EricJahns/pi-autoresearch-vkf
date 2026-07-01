@@ -45,10 +45,17 @@ tool is a typebox-validated `pi.registerTool(...)`. The loop's spine:
 `init_research` → `remember_claim` → `verify_claim` → `recall_memory` →
 `plan_next_step` (best-first tree expansion: which node to branch from + which idea)
 → `vkf_run_experiment` → `vkf_log_experiment` (records a tree node), plus synthesis
-(`find_contradictions`, `find_transfers`), `score_ideas`, `research_graph`
-(`vkf graph`), `promote_to_global`, dashboards, and keyless `WebSearch`/`WebFetch`
-(the pi host ships no web tools, so the extension provides them, named to match the
-skill text).
+(`find_contradictions`, `find_transfers`, `find_compositions`), `score_ideas`,
+`draft_research_plan` (the ideation-mode deliverable — init without a `command`
+makes the session `ideate`), `research_graph` (`vkf graph`), `promote_to_global`,
+dashboards, and keyless `WebSearch`/`WebFetch` (the pi host ships no web tools, so
+the extension provides them, named to match the skill text).
+
+**Autonomy:** the loop is pre-authorized by default (`autonomy: "continuous"`).
+`continuationNote` in `index.ts` appends the continue-don't-ask directive + budget
+state to every `plan_next_step`/`vkf_log_experiment` result (tool output recurs in
+context; skill prose fades — that's why it lives here, not only in the skills).
+The user's brake is the `session/STOP` sentinel, checked by `vkf_run_experiment`.
 
 ### The memory model (`cards.ts`)
 
@@ -124,8 +131,8 @@ overlay (`research_status`) render through `dashboard.ts`/`render.ts`/`style.ts`
 
 `skills/autoresearch-vkf/SKILL.md` is the orchestrator/spine; the rest are
 sub-skills (knowledge-gather, claim-extract, claim-verify, contradiction-miner,
-cross-domain-transfer, idea-tournament, hypothesis-loop, research-report) it
-delegates to. Skills are prose, not code — keep tool names in skill text in sync
+cross-domain-transfer, idea-tournament, hypothesis-loop, research-plan,
+research-report) it delegates to. Skills are prose, not code — keep tool names in skill text in sync
 with the actual tool names in `index.ts`, since the agent matches on them.
 
 ## Conventions

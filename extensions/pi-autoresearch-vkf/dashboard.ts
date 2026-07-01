@@ -7,7 +7,8 @@
  * The two halves mirror the architecture: the *session* (what this run has
  * tried) and the *memory* (durable knowledge by lifecycle state).
  */
-import { readConfig } from "./config.ts";
+import { existsSync } from "node:fs";
+import { autonomyMode, readConfig, sessionMode, type ResearchConfig } from "./config.ts";
 import {
   LEVERS,
   listCards,
@@ -74,6 +75,29 @@ function memoryLine(root: string): string {
     `${style.success(verified + " verified")}${style.muted(" · ")}` +
     `${style.error(c.contradicted + " contradicted")}`
   );
+}
+
+/**
+ * The loop-state line: session mode, autonomy, budget burn, and the user's
+ * STOP request when present. This is what makes unattended (continuous) runs
+ * legible at a glance — the UI replaces mid-loop check-ins.
+ */
+function loopLine(root: string, config: ResearchConfig): string {
+  const p = sessionPaths(root);
+  const experiments = readExperiments(p.experiments);
+  const iter = config.maxIterations
+    ? `iteration ${experiments.length}/${config.maxIterations}`
+    : `iteration ${experiments.length}`;
+  const parts = [
+    style.muted("loop: ") + sessionMode(config) + style.muted(" · ") + autonomyMode(config) + style.muted(" · ") + iter,
+  ];
+  if (existsSync(p.stop)) parts.push(style.error("⏸ STOP requested"));
+  const last = experiments[experiments.length - 1];
+  const best = summarize(experiments, config.direction).best;
+  if (last?.value !== undefined && last.value === best && last.outcome === "win") {
+    parts.push(style.accent("★ new best"));
+  }
+  return parts.join(style.muted(" · "));
 }
 
 const ALT_ABBR: Record<string, string> = {
@@ -252,6 +276,7 @@ export function buildWidgetLines(root: string): string[] {
   return [
     title,
     runsLine,
+    loopLine(root, config),
     ...(coverage ? [coverage] : []),
     memoryLine(root),
     ...(hint ? [style.muted(hint)] : []),
@@ -276,6 +301,10 @@ export function buildFullscreenLines(root: string): string[] {
   lines.push(style.muted("metric:  ") + config.metricName + style.muted(` (${config.direction} is better)`));
   if (config.baseline !== undefined) {
     lines.push(style.muted("baseline: ") + trimNum(config.baseline));
+  }
+  lines.push(loopLine(root, config));
+  if (existsSync(p.researchPlan)) {
+    lines.push(style.muted("plan:    ") + p.researchPlan);
   }
   lines.push("");
   lines.push(section("session experiments"));

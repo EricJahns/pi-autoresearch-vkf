@@ -14,6 +14,11 @@
  *    similarity (same how, different where). Keyword search finds the obvious;
  *    mechanism search finds the surprising analogy.
  *
+ *  - **Composition** — two *trusted* claims whose mechanisms are complementary
+ *    (both relevant to the goal, low mechanism overlap) combined into one
+ *    hypothesis. The benchmark's global optima are exactly such combinations —
+ *    ideas no single paper states, so retrieval alone can never propose them.
+ *
  * Pure module (reuses ./scoring.ts tokenization) so it is fully unit-testable.
  */
 import { jaccard, tokenize } from "./scoring.ts";
@@ -31,6 +36,8 @@ export interface CardLike {
   text: string;
   memory_state?: MemoryState;
   conflicts_with?: string[];
+  /** System part the claim touches (see ./cards.ts LEVERS) — different levers compose better. */
+  lever?: string;
 }
 
 const mechTokens = (c: CardLike): Set<string> => tokenize(c.mechanism ?? "");
@@ -204,4 +211,85 @@ export function findTransfers(
     });
   }
   return out.sort((a, b) => b.transfer_score - a.transfer_score);
+}
+
+// ── composition ───────────────────────────────────────────────────────────────
+
+/** States trusted enough to be a composition parent. */
+const COMPOSABLE = new Set<MemoryState>(["source_verified", "locally_tested", "replicated"]);
+
+export interface Composition {
+  /** The two parent claims to combine. */
+  a: string;
+  b: string;
+  titleA: string;
+  titleB: string;
+  /** How relevant the *weaker* parent is to the goal, [0,1]. */
+  goal_relevance: number;
+  /** Mechanism overlap between the parents — low means complementary. */
+  mechanism_overlap: number;
+  /** Ranking score: relevance × complementarity × evidence. */
+  score: number;
+  suggestion: string;
+}
+
+export interface CompositionOptions {
+  /** Min per-parent goal relevance (topic similarity to the goal text). */
+  minGoalRelevance?: number;
+  /** Max mechanism overlap — above this the pair is redundant, not composable. */
+  maxMechanismOverlap?: number;
+}
+
+/**
+ * Find pairs of *trusted* claims worth composing into a single novel hypothesis:
+ * both relevant to the goal, mechanisms mostly non-overlapping (complementary,
+ * not redundant), neither contradicted. Pairs touching *different levers* get a
+ * boost — combining a data-lever idea with an algorithm-lever idea is a real
+ * combination, not a restatement. `goal` is free text (the research goal).
+ */
+export function findCompositions(
+  goal: string,
+  cards: readonly CardLike[],
+  opts: CompositionOptions = {},
+): Composition[] {
+  const minRel = opts.minGoalRelevance ?? 0.05;
+  const maxOverlap = opts.maxMechanismOverlap ?? 0.34;
+  const goalTokens = tokenize(goal);
+
+  const trusted = cards.filter(
+    (c) => COMPOSABLE.has(c.memory_state as MemoryState) && (c.mechanism ?? "").trim(),
+  );
+  const relevance = new Map<string, number>(
+    trusted.map((c) => [c.id, jaccard(goalTokens, tokenize(c.text))]),
+  );
+  const evidence = (c: CardLike): number =>
+    c.memory_state === "replicated" ? 1 : c.memory_state === "locally_tested" ? 0.9 : 0.7;
+
+  const out: Composition[] = [];
+  for (let i = 0; i < trusted.length; i++) {
+    for (let j = i + 1; j < trusted.length; j++) {
+      const a = trusted[i]!;
+      const b = trusted[j]!;
+      const rel = Math.min(relevance.get(a.id)!, relevance.get(b.id)!);
+      if (rel < minRel) continue;
+      const overlap = mechanismSimilarity(a, b);
+      if (overlap > maxOverlap) continue;
+      const leverBoost = a.lever && b.lever && a.lever !== b.lever ? 1.15 : 1;
+      const score = rel * (1 - overlap) * evidence(a) * evidence(b) * leverBoost;
+      out.push({
+        a: a.id,
+        b: b.id,
+        titleA: a.title,
+        titleB: b.title,
+        goal_relevance: rel,
+        mechanism_overlap: overlap,
+        score,
+        suggestion:
+          `Compose ${a.id} + ${b.id}: their mechanisms are complementary` +
+          (leverBoost > 1 ? ` and touch different levers (${a.lever} + ${b.lever})` : "") +
+          ` — one hypothesis applying both, which no single source proposes.`,
+      });
+    }
+  }
+  return out.sort((x, y) => y.score - x.score);
 }

@@ -18,6 +18,22 @@ export type MetricDirection = "higher" | "lower";
  */
 export type AltitudePreference = "any" | "high" | "tuning";
 
+/**
+ * Whether the loop is pre-authorized to keep iterating without checking in.
+ * `continuous` (the default): once inputs are confirmed at init, the agent must
+ * not pause to ask permission between iterations — the user's brake is the
+ * session STOP file. `confirm-each`: check in before every experiment.
+ */
+export type AutonomyMode = "continuous" | "confirm-each";
+
+/**
+ * What kind of session this is. `optimize` (default): the classic loop against a
+ * measurable metric. `ideate`: no measure command — the deliverable is a ranked
+ * research plan (`draft_research_plan`) built from the knowledge base, not a
+ * metric delta. Derived automatically when init gets no command.
+ */
+export type SessionMode = "optimize" | "ideate";
+
 export interface ResearchConfig {
   /** Human-readable session name, e.g. "Speed up the test suite". */
   name: string;
@@ -44,6 +60,10 @@ export interface ResearchConfig {
   exploreFraction: number;
   /** Altitude bias for scoring (see {@link AltitudePreference}). */
   altitudePreference: AltitudePreference;
+  /** Loop autonomy (see {@link AutonomyMode}). Missing (legacy) ⇒ continuous. */
+  autonomy?: AutonomyMode;
+  /** Session kind (see {@link SessionMode}). Missing (legacy) ⇒ optimize. */
+  mode?: SessionMode;
   /** Actor id recorded as the owner/author of agent-written VKF objects. */
   owner: string;
   /** ISO timestamp the session was created. */
@@ -84,6 +104,16 @@ export function researchMode(config: ResearchConfig): {
   };
 }
 
+/** The effective autonomy mode for a config (legacy configs ⇒ continuous). */
+export function autonomyMode(config: ResearchConfig): AutonomyMode {
+  return config.autonomy ?? "continuous";
+}
+
+/** The effective session mode (legacy configs ⇒ optimize). */
+export function sessionMode(config: ResearchConfig): SessionMode {
+  return config.mode ?? (config.command.trim() ? "optimize" : "ideate");
+}
+
 export function readConfig(configPath: string): ResearchConfig | undefined {
   if (!existsSync(configPath)) return undefined;
   const raw = readFileSync(configPath, "utf8").trim();
@@ -99,8 +129,9 @@ export function writeConfig(configPath: string, config: ResearchConfig): void {
 export function makeConfig(params: {
   name: string;
   goal: string;
-  command: string;
-  metricName: string;
+  /** Omit (or pass empty) for an ideation session — no measurement loop. */
+  command?: string;
+  metricName?: string;
   direction?: MetricDirection;
   filesInScope?: string[];
   workingDir?: string;
@@ -108,14 +139,17 @@ export function makeConfig(params: {
   memoryProfile?: 1 | 2;
   exploreFraction?: number;
   altitudePreference?: AltitudePreference;
+  autonomy?: AutonomyMode;
   owner?: string;
 }): ResearchConfig {
   const mode = deriveResearchMode(params.goal);
+  const command = params.command ?? "";
   return {
     name: params.name,
     goal: params.goal,
-    command: params.command,
-    metricName: params.metricName,
+    command,
+    metricName: params.metricName ?? (command.trim() ? "metric" : "n/a"),
+    mode: command.trim() ? "optimize" : "ideate",
     direction: params.direction ?? "higher",
     filesInScope: params.filesInScope,
     workingDir: params.workingDir,
@@ -123,6 +157,7 @@ export function makeConfig(params: {
     memoryProfile: params.memoryProfile ?? DEFAULT_MEMORY_PROFILE,
     exploreFraction: params.exploreFraction ?? mode.exploreFraction,
     altitudePreference: params.altitudePreference ?? mode.altitudePreference,
+    autonomy: params.autonomy ?? "continuous",
     owner: params.owner ?? DEFAULT_OWNER,
     createdAt: new Date().toISOString(),
   };

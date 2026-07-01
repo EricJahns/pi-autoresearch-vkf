@@ -9,6 +9,13 @@ This is the engine. Each iteration turns trusted knowledge into a tested result
 and feeds it back into memory. Unlike a blind keep-what-wins loop, you choose
 ideas deliberately and you never repeat settled work.
 
+**Run continuously.** In `continuous` autonomy (the default) the loop is
+pre-authorized: when an iteration finishes, start the next one — do not end
+your turn to ask "should I continue?", present options, or await confirmation.
+`plan_next_step` and `vkf_log_experiment` print the autonomy line and budget
+after every call; obey it. Stop only when it says to (budget exhausted, STOP
+file present) or you hit a blocker only the user can clear.
+
 **The search is a tree, not a line.** Every experiment is a *node* that branches
 from a parent, and its outcome is judged against that parent's value — not one
 global baseline. So you can build on the best result so far, or **backtrack** to an
@@ -84,20 +91,26 @@ and *which idea to apply* for you; pass its `parent_id` + `node_kind` to
    Keep wins, revert regressions — either way it's now remembered, and the node is
    in the tree to branch from later.
 
-7. **Update `.autoresearch-vkf/session/prompt.md`** with the takeaway and repeat.
+7. **Update `.autoresearch-vkf/session/prompt.md`** — bump the "Current state"
+   block (iteration, best node, last/next action) and add the takeaway to the
+   right section (Open questions / Dead ends / Key wins) — then **start the next
+   iteration immediately** (see "Run continuously" above).
 
 ## Guardrails
 
-- **Don't repeatedly fine-tune small knobs.** Low-altitude hyperparameter tweaks —
+- **Knob tweaks are off the menu by default.** Low-altitude hyperparameter moves —
   LR-schedule shape, warmup length, batch size, weight decay, dropout rate, and the
-  like — are fine to *try once*, but they must **never become the loop's default
-  move**, and the same knob must not be tuned again and again. Revisit a knob only
-  when there's an extremely strong reason to believe it's the current *limiting
-  factor* — concretely, the last adjustment to that lever produced a **significant**
-  metric gain and the metric is **still clearly improving, not stagnating**. The
-  moment returns flatten, abandon that lever and go higher-altitude (change *how*
-  the method works) instead of squeezing the same knob. The widget's coverage line
-  is your tell: if one `lever·altitude` bucket keeps growing, stop feeding it.
+  like — are **not what this loop is for**. Unless the user *explicitly asked for
+  tuning* (mode `tuning`), do not propose them at all: pick the highest-priority
+  **mechanism- or reframe-level** idea instead (scoring already down-weights
+  hyperparameter ideas ~3× in the default mode — respect that, don't override it).
+  The two narrow exceptions: the user asked, or there's an extremely strong reason
+  to believe a specific knob is the current *limiting factor* — concretely, the
+  last adjustment to that lever produced a **significant** metric gain and the
+  metric is **still clearly improving, not stagnating** — and even then, try it
+  once, never repeatedly. The moment returns flatten, abandon that lever and go
+  higher-altitude (change *how* the method works). The widget's coverage line is
+  your tell: if one `lever·altitude` bucket keeps growing, stop feeding it.
 - **Don't just "train longer."** Increasing epochs / training steps / wall-clock is
   the limiting case of the rule above: it's not a mechanism — it buys metric with
   compute and teaches you nothing. Do **not** propose it unless the user explicitly

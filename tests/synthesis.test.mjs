@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   contextSimilarity,
   findContradictions,
+  findCompositions,
   findTransfers,
   mechanismSimilarity,
 } from "../extensions/pi-autoresearch-vkf/synthesis.ts";
@@ -70,4 +71,44 @@ test("similarity helpers behave", () => {
   const b = { id: "b", title: "", mechanism: "dynamic scale control", context: "snn", text: "" };
   assert.ok(mechanismSimilarity(a, b) > 0.9);
   assert.equal(contextSimilarity(a, b), 0); // different single-token domains
+});
+
+test("findCompositions pairs trusted, complementary, goal-relevant claims", () => {
+  const goal = "reduce transformer language model validation loss";
+  const cards = [
+    { id: "claim:data", title: "curriculum data ordering", text: "curriculum ordering of training data reduces transformer validation loss", mechanism: "orders samples easy to hard so gradients stay informative", lever: "data", memory_state: "locally_tested" },
+    { id: "claim:arch", title: "gated residuals", text: "gated residual connections reduce transformer validation loss", mechanism: "learned gates modulate residual signal flow between layers", lever: "architecture", memory_state: "source_verified" },
+    { id: "claim:untrusted", title: "candidate idea", text: "some untested transformer validation loss idea", mechanism: "unknown speculative mechanism", lever: "algorithm", memory_state: "candidate" },
+    { id: "claim:nomech", title: "no mechanism", text: "transformer validation loss idea without mechanism", memory_state: "replicated" },
+  ];
+  const comps = findCompositions(goal, cards);
+  assert.equal(comps.length, 1);
+  assert.equal(comps[0].a, "claim:data");
+  assert.equal(comps[0].b, "claim:arch");
+  assert.ok(comps[0].score > 0);
+  assert.ok(comps[0].mechanism_overlap < 0.34);
+});
+
+test("findCompositions rejects redundant (same-mechanism) pairs", () => {
+  const goal = "reduce transformer validation loss";
+  const mechanism = "orders samples easy to hard so gradients stay informative";
+  const cards = [
+    { id: "claim:a", title: "curriculum A", text: "curriculum ordering reduces transformer validation loss", mechanism, lever: "data", memory_state: "locally_tested" },
+    { id: "claim:b", title: "curriculum B", text: "sample ordering reduces transformer validation loss", mechanism, lever: "data", memory_state: "locally_tested" },
+  ];
+  assert.equal(findCompositions(goal, cards).length, 0);
+});
+
+test("findCompositions boosts different-lever pairs over same-lever pairs", () => {
+  const goal = "reduce validation loss of the language model";
+  const base = { text: "reduce validation loss of the language model", memory_state: "locally_tested" };
+  const diff = findCompositions(goal, [
+    { ...base, id: "claim:x", title: "x", mechanism: "gates modulate residual flow", lever: "architecture" },
+    { ...base, id: "claim:y", title: "y", mechanism: "curriculum orders training samples", lever: "data" },
+  ]);
+  const same = findCompositions(goal, [
+    { ...base, id: "claim:x", title: "x", mechanism: "gates modulate residual flow", lever: "data" },
+    { ...base, id: "claim:y", title: "y", mechanism: "curriculum orders training samples", lever: "data" },
+  ]);
+  assert.ok(diff[0].score > same[0].score);
 });

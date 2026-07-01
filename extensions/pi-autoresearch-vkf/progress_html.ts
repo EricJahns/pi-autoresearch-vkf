@@ -97,6 +97,11 @@ const STYLES = `
   .live { font-size:11px; color:var(--dim); }
   .live b { color:#2ea043; }
   .pill { font-size:10px; border:1px solid var(--border); border-radius:8px; padding:0 6px; color:var(--muted); }
+  .status { margin-top:8px; font-size:12px; color:var(--muted); }
+  .status b { color:var(--fg); }
+  .budget { display:inline-block; width:90px; height:8px; background:var(--line); border-radius:5px; overflow:hidden; vertical-align:middle; margin-left:4px; }
+  .budget > i { display:block; height:100%; background:var(--accent); }
+  .planpre { white-space:pre-wrap; font:12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin:0; }
 `;
 
 // The client app. Each entry is one line; using double-quoted entries lets the
@@ -123,6 +128,19 @@ const APP_JS: string = [
   "  function ensureSeries(){ if(ui.series && typeof ui.series==='object'){ (state.metricNames||[]).forEach(function(n){ if(!(n in ui.series)) ui.series[n] = (n===state.metricName); }); return; } ui.series={}; (state.metricNames||[]).forEach(function(n){ ui.series[n] = (n===state.metricName); }); }",
   "",
   "  function applyTheme(){ var t = ui.theme; if(t==='auto'){ document.documentElement.removeAttribute('data-theme'); } else { document.documentElement.setAttribute('data-theme', t); } }",
+  "",
+  "  // ---- loop status (mode / autonomy / budget / STOP) ----",
+  "  function renderStatus(){ var el=byId('status'); if(!el) return; var n=(state.experiments||[]).length; var parts=[];",
+  "    if(state.mode) parts.push('mode: <b>'+esc(state.mode)+'</b>');",
+  "    if(state.autonomy) parts.push('autonomy: <b>'+esc(state.autonomy)+'</b>');",
+  "    parts.push('iteration <b>'+n+(state.maxIterations?('/'+state.maxIterations):'')+'</b>');",
+  "    var html=parts.join(' \\u00b7 ');",
+  "    if(state.maxIterations){ var pb=Math.min(100,Math.round(100*n/state.maxIterations)); html += \" <span class='budget'><i style='width:\"+pb+\"%'></i></span>\"; }",
+  "    if(state.stopRequested) html += \" <span class='badge' style='background:#cf222e'>STOP requested</span>\";",
+  "    el.innerHTML=html; }",
+  "",
+  "  // ---- research plan (ideation deliverable) ----",
+  "  function renderPlan(){ var sec=byId('plansec'); if(!sec) return; if(!state.researchPlan){ sec.style.display='none'; return; } sec.style.display=''; var p=byId('plan'); if(p) p.textContent=state.researchPlan; }",
   "",
   "  // ---- stat cards ----",
   "  function renderCards(){ var e=state.experiments||[]; var w=0,l=0,inc=0; e.forEach(function(x){ if(x.outcome==='win')w++; else if(x.outcome==='loss')l++; else if(x.outcome==='inconclusive')inc++; });",
@@ -219,7 +237,7 @@ const APP_JS: string = [
   "  // ---- chart tooltip ----",
   "  function bindTips(scope,sel){ var tip=byId('tip'); scope.querySelectorAll(sel||'.pt').forEach(function(c){ c.addEventListener('mousemove',function(ev){ tip.textContent=c.getAttribute('data-label'); tip.style.left=(ev.clientX+12)+'px'; tip.style.top=(ev.clientY+12)+'px'; tip.style.opacity=1; }); c.addEventListener('mouseleave',function(){ tip.style.opacity=0; }); }); }",
   "",
-  "  function render(){ ensureSeries(); renderCards(); renderSeriesToggles(); renderChart(); renderTree(); renderGraph(); renderDetail(); renderHeatmap(); renderMemory(); renderFilters(); renderTable(); var g=byId('gen'); if(g) g.textContent=state.generatedAt||''; var v=byId('ver'); if(v) v.textContent=state.version?('v'+state.version):''; }",
+  "  function render(){ ensureSeries(); renderStatus(); renderPlan(); renderCards(); renderSeriesToggles(); renderChart(); renderTree(); renderGraph(); renderDetail(); renderHeatmap(); renderMemory(); renderFilters(); renderTable(); var g=byId('gen'); if(g) g.textContent=state.generatedAt||''; var v=byId('ver'); if(v) v.textContent=state.version?('v'+state.version):''; }",
   "",
   "  window.VKF = {",
   "    series:function(n,on){ ui.series[n]=on; saveUI(); renderSeriesToggles(); renderChart(); },",
@@ -258,6 +276,7 @@ export function renderDashboardHtml(data: DashboardData): string {
     <div>
       <h1>pi-autoresearch-vkf · ${escapeHtml(data.name)}</h1>
       <p class="goal">${escapeHtml(data.goal)}</p>
+      <div id="status" class="status"></div>
     </div>
     <div style="text-align:right">
       <button id="themebtn" class="toolbtn" onclick="VKF.theme()">Theme</button>
@@ -302,6 +321,11 @@ export function renderDashboardHtml(data: DashboardData): string {
       <div class="panel"><div id="memory"></div></div>
     </section>
   </div>
+
+  <section id="plansec" style="display:none;margin-top:18px">
+    <div class="h2row"><h2>Research plan</h2><span class="pill">session/research_plan.md</span></div>
+    <div class="panel scroll"><pre id="plan" class="planpre"></pre></div>
+  </section>
 
   <div style="margin-top:18px">
     <h2>Experiments</h2>

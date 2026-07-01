@@ -144,10 +144,15 @@ export interface ScoredIdea {
   bucket: string;
 }
 
-/** Altitude bias per preference mode; missing altitude is treated as neutral. */
+/**
+ * Altitude bias per preference mode; missing altitude is treated as neutral.
+ * `high` (the default for non-tuning goals) penalizes hyperparameter-altitude
+ * ideas hard: knob tweaks are off the loop's menu unless the user explicitly
+ * asks for tuning (which switches the mode and restores them to parity).
+ */
 const ALTITUDE_AFFINITY: Record<AltitudePreference, Record<string, number>> = {
   any: { hyperparameter: 1, component: 1, mechanism: 1, reframe: 1 },
-  high: { hyperparameter: 0.7, component: 0.9, mechanism: 1, reframe: 1 },
+  high: { hyperparameter: 0.35, component: 0.85, mechanism: 1, reframe: 1 },
   tuning: { hyperparameter: 1, component: 0.8, mechanism: 0.6, reframe: 0.5 },
 };
 

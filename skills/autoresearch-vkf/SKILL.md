@@ -12,6 +12,36 @@ you build a living, auditable research memory and choose experiments from it.
 
 You are the spine. Delegate the specialized work to the sub-skills below.
 
+## Autonomy contract
+
+Step 1 (confirm inputs) is the **only** point where you check in with the user.
+Once inputs are confirmed and `init_research` has run with `autonomy:
+"continuous"` (the default), the loop is **pre-authorized**: run iteration after
+iteration without pausing to ask permission, offer options, or say "shall I
+continue?". Ending your turn with a question or a plan instead of the next
+experiment is a contract violation, not politeness. The user's brake is the
+STOP file (`.autoresearch-vkf/session/STOP`) — its existence, not your asking,
+is how they pause you; the tools check it and tell you when to halt.
+
+The only valid reasons to stop mid-run:
+- the iteration budget (`max_iterations`) is exhausted;
+- the goal is met or all promising ideas are exhausted (→ report);
+- the STOP file exists, or the user interrupts;
+- you are blocked on something only the user can do (credentials, hardware,
+  a destructive/out-of-scope action). State the blocker, then stop.
+
+Progress reporting happens through the widget/dashboards and the final report —
+not through mid-loop check-ins. If the user asked to be consulted each step,
+init with `autonomy: "confirm-each"` instead.
+
+## Focus: novel over knobs
+
+Default the loop to **novel, mechanism-level changes relevant to the research
+goal**. Hyperparameter-altitude ideas (LR, schedules, batch size, epochs, …)
+are off the menu — scoring already penalizes them hard in the default mode —
+unless the **user explicitly asks for tuning**, in which case init derives (or
+you set via `set_research_mode`) the `tuning` mode and they rank normally.
+
 ## Tools (provided by the pi-autoresearch-vkf extension)
 
 - `init_research` — scaffold the `.autoresearch-vkf/` workspace (session + memory VKF bundle) (once).
@@ -22,6 +52,8 @@ You are the spine. Delegate the specialized work to the sub-skills below.
 - `plan_next_step` — best-first expansion: pick which experiment node to branch from AND which idea to apply next.
 - `find_contradictions` — mine memory for tensions that seed novel hypotheses.
 - `find_transfers` — cross-domain mechanism search for surprising analogies.
+- `find_compositions` — combine trusted claims with complementary mechanisms into hypotheses no single source states.
+- `draft_research_plan` — write the ranked hypothesis portfolio (`session/research_plan.md`).
 - `vkf_run_experiment` — run the measurement command, capture `METRIC name=value`.
 - `vkf_log_experiment` — record a result as a tree node and write it back to memory (updates belief from evidence & lifecycle).
 - `research_graph` — the typed knowledge graph (papers → claims → experiments, conflicts, the search tree) via `vkf graph`.
@@ -40,9 +72,18 @@ locally_tested/replicated`, or `contradicted → deprecated → retired`. Only
 strongly steer experiments. Everything you write is a *proposal* with a
 transaction record — promotion is an explicit, audited step.
 
+## Two session kinds
+
+- **Optimize** (a measurable target exists): the workflow below.
+- **Ideate** (the user wants novel research plans/ideas from the knowledge
+  base, no metric yet): use the **autoresearch-vkf-research-plan** skill —
+  `init_research` *without* a command, gather → verify → synthesize
+  (`find_contradictions` / `find_transfers` / `find_compositions`) →
+  `draft_research_plan`. The deliverable is `session/research_plan.md`.
+
 ## Workflow
 
-1. **Confirm inputs.** Ask for and confirm:
+1. **Confirm inputs** (the one and only check-in). Ask for and confirm:
    - the **goal** (what to improve) and the **metric** + which **direction** is better;
    - the **command** that prints `METRIC <name>=<number>` (edit `.autoresearch-vkf/session/measure.sh`);
    - the **files in scope** and any compute/time budget.
@@ -82,5 +123,29 @@ transaction record — promotion is an explicit, audited step.
 6. **Report** → use the **autoresearch-vkf-research-report** skill to produce the lineage report
    (paper → claim → hypothesis → patch → metric Δ → status → memory update).
 
-Keep `.autoresearch-vkf/session/prompt.md` current so a fresh agent can continue. The loop is
-resumable: on restart, read `.autoresearch-vkf/session/` and `recall_memory`, then continue.
+## Parallelize the independent work
+
+When the host supports sub-agents/background tasks, don't do embarrassingly
+parallel work serially:
+
+- **Gather** — fan out one gatherer per sub-topic/source family (arXiv vs
+  Semantic Scholar vs GitHub), each returning structured candidates; you (the
+  spine) stage them via `remember_claim` so every memory write stays in one
+  place and the audit trail is coherent.
+- **Verify** — claims are independent; verify several in parallel, one
+  sub-agent per claim, each reporting a decision + reason for `verify_claim`.
+- **Tournament** — the idea-tournament skill's roles run as independent agents.
+
+Never delegate the memory writes themselves or `vkf_log_experiment` — workers
+research and report; the spine writes. No sub-agents? Just do these steps
+serially yourself.
+
+## The handoff document
+
+`.autoresearch-vkf/session/prompt.md` is the structured handoff: it carries the
+autonomy directive and a fixed schema (Current state / Open questions / Dead
+ends / Key wins / Open directions). **Update "Current state" (iteration, best
+node, last/next action) and the takeaway sections after every iteration** — a
+fresh agent must be able to resume from this file plus `recall_memory` alone,
+*including the fact that it should keep going without asking*. On restart:
+read `.autoresearch-vkf/session/prompt.md`, `recall_memory`, then continue the loop.

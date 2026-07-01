@@ -46,6 +46,9 @@ export function sessionPaths(root: string) {
     experiments: join(dir, "experiments.json"),
     log: join(dir, "log.jsonl"),
     measure: join(dir, "measure.sh"),
+    // User brake for continuous autonomy: creating this file halts the loop.
+    stop: join(dir, "STOP"),
+    researchPlan: join(dir, "research_plan.md"),
     checks: join(dir, "checks.sh"),
     report: join(dir, "report.md"),
     progressHtml: join(dir, "progress.html"),
