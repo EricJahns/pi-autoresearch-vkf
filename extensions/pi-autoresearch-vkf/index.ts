@@ -70,7 +70,7 @@ import * as vkf from "./vkf.ts";
 const MAX_OUTPUT_CHARS = 16_000;
 
 /** Package version, surfaced in the dashboard footer. Keep in sync with package.json. */
-const VERSION = "0.10.0";
+const VERSION = "0.10.1";
 
 const truncate = (s: string): string =>
   s.length <= MAX_OUTPUT_CHARS

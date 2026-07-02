@@ -102,6 +102,15 @@ const STYLES = `
   .budget { display:inline-block; width:90px; height:8px; background:var(--line); border-radius:5px; overflow:hidden; vertical-align:middle; margin-left:4px; }
   .budget > i { display:block; height:100%; background:var(--accent); }
   .planpre { white-space:pre-wrap; font:12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin:0; }
+  .zoomwrap { position:relative; }
+  .zoomstage { overflow:hidden; height:520px; cursor:grab; touch-action:none; }
+  .zoomstage.grab { cursor:grabbing; }
+  .zoomstage svg { width:100%; height:100%; display:block; }
+  .zoomctl { position:absolute; top:8px; right:8px; display:flex; gap:4px; z-index:3; }
+  .zoomctl button { width:26px; height:26px; padding:0; line-height:1; font-size:14px; background:var(--panel); color:var(--fg); border:1px solid var(--border); border-radius:6px; cursor:pointer; opacity:.85; }
+  .zoomctl button:hover { border-color:var(--accent); opacity:1; }
+  .zoomhint { position:absolute; bottom:6px; left:10px; font-size:10px; color:var(--dim); pointer-events:none; }
+  .xm line { stroke-linecap:round; }
 `;
 
 // The client app. Each entry is one line; using double-quoted entries lets the
@@ -116,7 +125,7 @@ const APP_JS: string = [
   "  var state = {}; try { state = JSON.parse(boot.textContent||'{}'); } catch(e){}",
   "  var ui = loadUI();",
   "",
-  "  function defaults(){ return {theme:'auto', series:null, log:false, fOutcome:'all', fLever:'all', fKept:'all', sortKey:'id', sortDir:1, selected:null}; }",
+  "  function defaults(){ return {theme:'auto', series:null, log:false, chartView:'time', treeView:null, graphView:null, fOutcome:'all', fLever:'all', fKept:'all', sortKey:'id', sortDir:1, selected:null}; }",
   "  function loadUI(){ try { return Object.assign(defaults(), JSON.parse(localStorage.getItem('vkfui')||'{}')); } catch(e){ return defaults(); } }",
   "  function saveUI(){ try { localStorage.setItem('vkfui', JSON.stringify(ui)); } catch(e){} }",
   "  function esc(s){ return String(s==null?'':s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];}); }",
@@ -151,7 +160,7 @@ const APP_JS: string = [
   "  function renderSeriesToggles(){ var names=state.metricNames||[]; var html = names.map(function(n,i){ var on = ui.series[n]?'checked':''; var c = (n===state.metricName)?'#0969da':PALETTE[i%PALETTE.length]; return \"<label><input type='checkbox' \"+on+\" onchange=\\\"VKF.series('\"+esc(n)+\"',this.checked)\\\"><span style='color:\"+c+\"'>\\u25cf</span>\"+esc(n)+\"</label>\"; }).join(' ');",
   "    html += \"<label><input type='checkbox' \"+(ui.log?'checked':'')+\" onchange='VKF.log(this.checked)'>log scale</label>\";",
   "    byId('series').innerHTML = html; }",
-  "  function renderChart(){ var W=760,H=260,pad={l:52,r:18,t:14,b:28}; var iw=W-pad.l-pad.r, ih=H-pad.t-pad.b; var exps=state.experiments||[];",
+  "  function renderChart(){ updateChartHead(); if(ui.chartView==='progress'){ renderProgress(); return; } var W=760,H=260,pad={l:52,r:18,t:14,b:28}; var iw=W-pad.l-pad.r, ih=H-pad.t-pad.b; var exps=state.experiments||[];",
   "    var sel = (state.metricNames||[]).filter(function(n){ return ui.series[n]; }); if(sel.length===0) sel=[state.metricName];",
   "    var vals=[]; exps.forEach(function(e){ sel.forEach(function(n){ var v=e.metrics&&e.metrics[n]; if(v!=null&&!isNaN(v)) vals.push(v); }); }); if(state.baseline!=null) vals.push(state.baseline);",
   "    if(vals.length===0){ byId('chart').innerHTML = \"<div class='empty'>No measured experiments yet \\u2014 the chart appears once results are logged.</div>\"; return; }",
@@ -168,6 +177,27 @@ const APP_JS: string = [
   "    svg += \"<text x='\"+pad.l+\"' y='\"+(H-8)+\"' class='axis'>exp 1</text><text x='\"+(W-pad.r)+\"' y='\"+(H-8)+\"' text-anchor='end' class='axis'>exp \"+n+\"</text></svg>\";",
   "    byId('chart').innerHTML = svg; bindTips(byId('chart')); }",
   "",
+  "  // ---- progress view (best-so-far frontier; unsuccessful runs are x-marks on the axis) ----",
+  "  function updateChartHead(){ var b=byId('chartviewbtn'); if(b) b.textContent = ui.chartView==='progress'?'View: progress':'View: over time'; var s=byId('series'); if(s) s.style.display = ui.chartView==='progress'?'none':''; }",
+  "  function xmark(cx,cy,color,label){ var r=3.6; var a=(cx-r).toFixed(1), b=(cx+r).toFixed(1), c=(cy-r).toFixed(1), d=(cy+r).toFixed(1); return \"<g class='xm' data-label='\"+esc(label)+\"'><line x1='\"+a+\"' y1='\"+c+\"' x2='\"+b+\"' y2='\"+d+\"' stroke='\"+color+\"' stroke-width='1.7'/><line x1='\"+a+\"' y1='\"+d+\"' x2='\"+b+\"' y2='\"+c+\"' stroke='\"+color+\"' stroke-width='1.7'/></g>\"; }",
+  "  function renderProgress(){ var W=760,H=270,pad={l:52,r:18,t:14,b:46}; var iw=W-pad.l-pad.r, ih=H-pad.t-pad.b; var exps=state.experiments||[]; var name=state.metricName; var dir=(state.direction==='lower')?-1:1;",
+  "    var meas=[]; exps.forEach(function(e,i){ var v=e.metrics&&e.metrics[name]; if(v!=null&&!isNaN(v)) meas.push({i:i,v:v,e:e}); });",
+  "    if(meas.length===0){ byId('chart').innerHTML=\"<div class='empty'>No measured experiments yet \\u2014 the progress chart appears once results are logged.</div>\"; return; }",
+  "    var best=null, frontier=[], others=[]; meas.forEach(function(p){ var improved = (best===null) || (dir>0 ? p.v>best : p.v<best); if(improved){ best=p.v; frontier.push(p); } else { others.push(p); } });",
+  "    var n=exps.length; var x=function(i){ return pad.l + (n<=1?iw/2:(i/(n-1))*iw); };",
+  "    var yv=frontier.map(function(p){ return p.v; }); if(state.baseline!=null) yv.push(state.baseline); var min=Math.min.apply(null,yv), max=Math.max.apply(null,yv); if(min===max){ min-=1; max+=1; } var pd=(max-min)*0.08; min-=pd; max+=pd;",
+  "    var y=function(v){ return pad.t + ih - ((v-min)/(max-min))*ih; }; var axisY=pad.t+ih;",
+  "    var svg=\"<svg id='chartsvg' viewBox='0 0 \"+W+\" \"+H+\"' width='100%' preserveAspectRatio='xMidYMid meet'>\";",
+  "    svg += \"<rect x='\"+pad.l+\"' y='\"+pad.t+\"' width='\"+iw+\"' height='\"+ih+\"' fill='none' stroke='var(--border)'/>\";",
+  "    [min,(min+max)/2,max].forEach(function(tv){ var yy=y(tv); svg += \"<text x='\"+(pad.l-6)+\"' y='\"+(yy+3).toFixed(1)+\"' text-anchor='end' class='axis'>\"+num(tv)+\"</text>\"; });",
+  "    if(state.baseline!=null){ var yb=y(state.baseline); svg += \"<line x1='\"+pad.l+\"' y1='\"+yb.toFixed(1)+\"' x2='\"+(W-pad.r)+\"' y2='\"+yb.toFixed(1)+\"' stroke='var(--dim)' stroke-dasharray='4 3'/><text x='\"+(W-pad.r)+\"' y='\"+(yb-4).toFixed(1)+\"' text-anchor='end' class='axis'>baseline \"+num(state.baseline)+\"</text>\"; }",
+  "    if(frontier.length){ var d=\"M\"+x(frontier[0].i).toFixed(1)+\",\"+y(frontier[0].v).toFixed(1); for(var k=1;k<frontier.length;k++){ d += \" H\"+x(frontier[k].i).toFixed(1)+\" V\"+y(frontier[k].v).toFixed(1); } d += \" H\"+x(n-1).toFixed(1); svg += \"<path d='\"+d+\"' fill='none' stroke='#0969da' stroke-width='2'/>\"; }",
+  "    var buckets={}; others.forEach(function(p){ var bx=Math.round(x(p.i)/9)*9; (buckets[bx]=buckets[bx]||[]).push(p); });",
+  "    Object.keys(buckets).forEach(function(bxk){ var list=buckets[bxk]; var show=Math.min(list.length,4); for(var k=0;k<show;k++){ var p=list[k]; var mx=x(p.i), my=axisY-4-k*9; svg += xmark(mx,my,OUTCOME[p.e.outcome]||'#8c959f', p.e.id+' \\u00b7 '+name+'='+num(p.v)+' ('+p.e.outcome+')'); } if(list.length>4){ var ids=list.slice(4).map(function(q){ return q.e.id; }).join(', '); svg += \"<text x='\"+(+bxk)+\"' y='\"+(axisY-4-4*9)+\"' text-anchor='middle' class='axis' style='cursor:default'><tspan class='xm' data-label='\"+esc((list.length-4)+' more: '+ids)+\"'>+\"+(list.length-4)+\"</tspan></text>\"; } });",
+  "    frontier.forEach(function(p){ var cx=x(p.i).toFixed(1); svg += \"<circle class='pt' cx='\"+cx+\"' cy='\"+y(p.v).toFixed(1)+\"' r='4.5' fill='#2ea043' stroke='var(--panel)' stroke-width='1.5' data-label='\"+esc(p.e.id+' \\u00b7 '+name+'='+num(p.v)+' \\u00b7 new best ('+p.e.outcome+')')+\"'/>\"; svg += \"<text x='\"+cx+\"' y='\"+(H-24)+\"' text-anchor='middle' class='axis'>\"+esc('#'+(p.i+1))+\"</text>\"; });",
+  "    svg += \"<text x='\"+pad.l+\"' y='\"+(H-6)+\"' class='axis'>experiment \\u2014 \\u25cf improved best, \\u00d7 no improvement (hover for detail)</text>\";",
+  "    svg += \"</svg>\"; byId('chart').innerHTML = svg; bindTips(byId('chart'),'.pt,.xm'); }",
+  "",
   "  // ---- search tree ----",
   "  function renderTree(){ var exps=state.experiments||[]; if(exps.length===0){ byId('tree').innerHTML=\"<div class='empty'>The search tree appears once experiments are logged.</div>\"; return; }",
   "    var map=expsById(); var kids={}; var roots=[]; exps.forEach(function(e){ var p=e.parent_id; if(p&&map[p]){ (kids[p]=kids[p]||[]).push(e); } else { roots.push(e); } });",
@@ -175,12 +205,12 @@ const APP_JS: string = [
   "    var order=[]; (function walk(list){ list.forEach(function(e){ order.push(e); walk(kids[e.id]||[]); }); })(roots);",
   "    var rowH=34, colW=150, pad=20; var W=pad*2+Math.max(1,maxDepth)*colW+120, H=pad*2+order.length*rowH;",
   "    var yOf={}; order.forEach(function(e,i){ yOf[e.id]=pad+i*rowH+10; });",
-  "    var svg=\"<svg viewBox='0 0 \"+W+\" \"+H+\"' width='100%' preserveAspectRatio='xMinYMin meet' style='min-height:\"+Math.min(H,520)+\"px'>\";",
+  "    var svg=\"<svg viewBox='0 0 \"+W+\" \"+H+\"' preserveAspectRatio='xMinYMin meet'><g class='vp'>\";",
   "    exps.forEach(function(e){ if(e.parent_id&&map[e.parent_id]){ var x1=pad+(map[e.parent_id].depth||0)*colW+8, y1=yOf[e.parent_id], x2=pad+(e.depth||0)*colW+8, y2=yOf[e.id]; svg += \"<path d='M\"+x1+\",\"+y1+\" C\"+(x1+colW/2)+\",\"+y1+\" \"+(x2-colW/2)+\",\"+y2+\" \"+x2+\",\"+y2+\"' fill='none' stroke='var(--border)'/>\"; } });",
   "    order.forEach(function(e){ var cx=pad+(e.depth||0)*colW+8, cy=yOf[e.id]; var fill=OUTCOME[e.outcome]||'#57606a'; var selc=(ui.selected===e.id)?' sel':''; svg += \"<g class='node\"+selc+\"' onclick=\\\"VKF.sel('\"+esc(e.id)+\"')\\\">\";",
   "      svg += \"<circle cx='\"+cx+\"' cy='\"+cy+\"' r='6' fill='\"+fill+\"' stroke='var(--panel)'/>\"; svg += \"<text x='\"+(cx+12)+\"' y='\"+(cy+4)+\"' style='font-size:12px;fill:var(--fg)'>\"+esc(e.id)+(e.kept?' \\u2713':'')+\"</text>\";",
   "      svg += \"<text x='\"+(cx+12)+\"' y='\"+(cy+17)+\"' class='axis'>\"+esc((e.node_kind||'')+(e.value!=null?(' \\u00b7 '+num(e.value)):''))+\"</text></g>\"; });",
-  "    svg += \"</svg>\"; byId('tree').innerHTML = svg; }",
+  "    svg += \"</g></svg>\"; byId('tree').innerHTML = svg; applyView('tree'); setupPanZoom('tree'); }",
   "",
   "  // ---- knowledge graph (paper -> claim -> experiment, built CLI-free) ----",
   "  var GTYPE = {paper:'#8250df', claim:'#0969da', experiment:'#1a7f37'};",
@@ -191,8 +221,8 @@ const APP_JS: string = [
   "    var cols={}, maxRank=0; nodes.forEach(function(n){ var r=gRank(n); (cols[r]=cols[r]||[]).push(n); if(r>maxRank) maxRank=r; });",
   "    var colW=190, rowH=30, padX=14, padY=16, nodeW=156; var pos={}, maxRows=1;",
   "    for(var r=0;r<=maxRank;r++){ var list=cols[r]||[]; if(list.length>maxRows) maxRows=list.length; list.forEach(function(n,i){ pos[n.id]={x:padX+r*colW, y:padY+i*rowH+rowH/2}; }); }",
-  "    var W=padX*2+maxRank*colW+nodeW, H=padY*2+maxRows*rowH; var minH=Math.min(Math.max(H,140),520);",
-  "    var svg=\"<svg viewBox='0 0 \"+W+\" \"+H+\"' width='100%' preserveAspectRatio='xMinYMin meet' style='min-height:\"+minH+\"px'>\";",
+  "    var W=padX*2+maxRank*colW+nodeW, H=padY*2+maxRows*rowH;",
+  "    var svg=\"<svg viewBox='0 0 \"+W+\" \"+H+\"' preserveAspectRatio='xMinYMin meet'><g class='vp'>\";",
   "    edges.forEach(function(e){ var a=pos[e.source], b=pos[e.target]; if(!a||!b) return; var dash=e.kind==='evidenced'?\" stroke-dasharray='3 3'\":''; var sx=a.x, sy=a.y, tx=b.x+nodeW, ty=b.y; svg += \"<path d='M\"+sx+\",\"+sy+\" C\"+(sx-colW/3).toFixed(1)+\",\"+sy+\" \"+(tx+colW/3).toFixed(1)+\",\"+ty+\" \"+tx+\",\"+ty+\"' fill='none' stroke='\"+(GEDGE[e.kind]||'var(--border)')+\"'\"+dash+\"/>\"; });",
   "    nodes.forEach(function(n){ var p=pos[n.id]; if(!p) return; var fill = n.type==='experiment'?(OUTCOME[n.outcome]||'#57606a'):GTYPE[n.type]; var sel=(ui.selected===n.id)?' sel':''; var clk=(n.type==='experiment'); var label=(n.title||n.id); if(label.length>22) label=label.slice(0,21)+'\\u2026';",
   "      var tip=(n.title||n.id)+(n.value!=null?(' \\u00b7 '+num(n.value)):'')+(n.belief!=null?(' \\u00b7 belief '+Math.round(n.belief*100)+'%'):'')+(n.state?(' \\u00b7 '+n.state):'');",
@@ -200,9 +230,9 @@ const APP_JS: string = [
   "      svg += \"<rect x='\"+p.x+\"' y='\"+(p.y-10)+\"' rx='5' width='\"+nodeW+\"' height='20' fill='var(--panel)' stroke='\"+fill+\"' stroke-width='1.5'/>\";",
   "      svg += \"<circle cx='\"+(p.x+11)+\"' cy='\"+p.y+\"' r='4' fill='\"+fill+\"'/>\";",
   "      svg += \"<text x='\"+(p.x+21)+\"' y='\"+(p.y+4)+\"' style='font-size:11px;fill:var(--fg)'>\"+esc(label)+\"</text></g>\"; });",
-  "    svg += \"</svg>\";",
+  "    svg += \"</g></svg>\";",
   "    var legend = \"<div class='legend'><span><i style='background:\"+GTYPE.paper+\"'></i>paper</span><span><i style='background:\"+GTYPE.claim+\"'></i>claim</span><span><i style='background:\"+GTYPE.experiment+\"'></i>experiment</span><span class='dim'>edges: claim\\u2192paper (evidence), experiment\\u2192claim (tested), experiment\\u2192parent (branch)</span></div>\";",
-  "    byId('graph').innerHTML = svg + legend; bindTips(byId('graph'),'.gnode'); }",
+  "    byId('graph').innerHTML = svg; var lg=byId('graphlegend'); if(lg) lg.innerHTML=legend; bindTips(byId('graph'),'.gnode'); applyView('graph'); setupPanZoom('graph'); }",
   "",
   "  // ---- detail panel ----",
   "  function renderDetail(){ var box=byId('detail'); if(!ui.selected){ box.innerHTML=\"<div class='dim'>Click a node in the tree to inspect it.</div>\"; return; } var e=expsById()[ui.selected]; if(!e){ box.innerHTML=\"<div class='dim'>(node not found)</div>\"; return; }",
@@ -237,11 +267,25 @@ const APP_JS: string = [
   "  // ---- chart tooltip ----",
   "  function bindTips(scope,sel){ var tip=byId('tip'); scope.querySelectorAll(sel||'.pt').forEach(function(c){ c.addEventListener('mousemove',function(ev){ tip.textContent=c.getAttribute('data-label'); tip.style.left=(ev.clientX+12)+'px'; tip.style.top=(ev.clientY+12)+'px'; tip.style.opacity=1; }); c.addEventListener('mouseleave',function(){ tip.style.opacity=0; }); }); }",
   "",
+  "  // ---- pan/zoom for the tree + knowledge-graph SVGs (drag to pan, wheel or buttons to zoom) ----",
+  "  function getView(id){ var k=id+'View'; var v=ui[k]; if(!v||typeof v!=='object'){ v={k:1,x:0,y:0}; ui[k]=v; } return v; }",
+  "  function vbScale(svg){ var bb=svg.getBoundingClientRect(); var w=(svg.viewBox&&svg.viewBox.baseVal&&svg.viewBox.baseVal.width)||bb.width; return (bb.width>0)?(w/bb.width):1; }",
+  "  function applyView(id){ var st=byId(id); if(!st) return; var g=st.querySelector('svg .vp'); if(!g) return; var v=getView(id); g.setAttribute('transform','translate('+v.x.toFixed(2)+','+v.y.toFixed(2)+') scale('+v.k.toFixed(4)+')'); }",
+  "  function zoomAt(id,cx,cy,f){ var v=getView(id); var nk=Math.min(8,Math.max(0.2,v.k*f)); var contentX=(cx-v.x)/v.k, contentY=(cy-v.y)/v.k; v.k=nk; v.x=cx-contentX*nk; v.y=cy-contentY*nk; saveUI(); applyView(id); }",
+  "  function setupPanZoom(id){ var st=byId(id); if(!st||st.dataset.pz) return; st.dataset.pz='1'; var drag=null;",
+  "    st.addEventListener('wheel',function(ev){ var svg=st.querySelector('svg'); if(!svg) return; ev.preventDefault(); var s=vbScale(svg); var rect=svg.getBoundingClientRect(); var cx=(ev.clientX-rect.left)*s, cy=(ev.clientY-rect.top)*s; zoomAt(id,cx,cy, ev.deltaY<0?1.12:1/1.12); },{passive:false});",
+  "    st.addEventListener('mousedown',function(ev){ var svg=st.querySelector('svg'); if(!svg) return; drag={x:ev.clientX,y:ev.clientY,s:vbScale(svg)}; st.classList.add('grab'); ev.preventDefault(); });",
+  "    window.addEventListener('mousemove',function(ev){ if(!drag) return; var v=getView(id); v.x += (ev.clientX-drag.x)*drag.s; v.y += (ev.clientY-drag.y)*drag.s; drag.x=ev.clientX; drag.y=ev.clientY; applyView(id); });",
+  "    window.addEventListener('mouseup',function(){ if(drag){ drag=null; st.classList.remove('grab'); saveUI(); } }); }",
+  "",
   "  function render(){ ensureSeries(); renderStatus(); renderPlan(); renderCards(); renderSeriesToggles(); renderChart(); renderTree(); renderGraph(); renderDetail(); renderHeatmap(); renderMemory(); renderFilters(); renderTable(); var g=byId('gen'); if(g) g.textContent=state.generatedAt||''; var v=byId('ver'); if(v) v.textContent=state.version?('v'+state.version):''; }",
   "",
   "  window.VKF = {",
   "    series:function(n,on){ ui.series[n]=on; saveUI(); renderSeriesToggles(); renderChart(); },",
   "    log:function(on){ ui.log=on; saveUI(); renderChart(); },",
+  "    chartView:function(){ ui.chartView = ui.chartView==='progress'?'time':'progress'; saveUI(); renderChart(); },",
+  "    zoom:function(id,f){ var st=byId(id); var svg=st&&st.querySelector('svg'); if(!svg) return; var vb=svg.viewBox.baseVal; zoomAt(id, vb.width/2, vb.height/2, f); },",
+  "    zoomReset:function(id){ ui[id+'View']={k:1,x:0,y:0}; saveUI(); applyView(id); },",
   "    sel:function(id){ ui.selected=id; saveUI(); renderTree(); renderGraph(); renderDetail(); },",
   "    filter:function(k,v){ ui[k]=v; saveUI(); renderTable(); },",
   "    sort:function(k){ if(ui.sortKey===k) ui.sortDir=-ui.sortDir; else { ui.sortKey=k; ui.sortDir=1; } saveUI(); renderTable(); },",
@@ -288,7 +332,7 @@ export function renderDashboardHtml(data: DashboardData): string {
 
   <div class="grid main">
     <section>
-      <h2>${escapeHtml(data.metricName)} over time</h2>
+      <div class="h2row"><h2>${escapeHtml(data.metricName)}</h2><button id="chartviewbtn" class="toolbtn" onclick="VKF.chartView()">View</button></div>
       <div class="panel">
         <div id="series" class="controls"></div>
         <div id="chart"></div>
@@ -303,11 +347,24 @@ export function renderDashboardHtml(data: DashboardData): string {
   <div class="grid duo">
     <section>
       <h2>Search tree</h2>
-      <div class="panel scroll"><div id="tree"></div></div>
+      <div class="panel">
+        <div class="zoomwrap">
+          <div class="zoomctl"><button title="Zoom in" onclick="VKF.zoom('tree',1.25)">+</button><button title="Zoom out" onclick="VKF.zoom('tree',0.8)">−</button><button title="Reset" onclick="VKF.zoomReset('tree')">↺</button></div>
+          <div id="tree" class="zoomstage"></div>
+          <div class="zoomhint">drag to pan · scroll to zoom</div>
+        </div>
+      </div>
     </section>
     <section>
       <div class="h2row"><h2>Knowledge graph</h2><span class="pill">paper → claim → experiment</span></div>
-      <div class="panel scroll"><div id="graph"></div></div>
+      <div class="panel">
+        <div class="zoomwrap">
+          <div class="zoomctl"><button title="Zoom in" onclick="VKF.zoom('graph',1.25)">+</button><button title="Zoom out" onclick="VKF.zoom('graph',0.8)">−</button><button title="Reset" onclick="VKF.zoomReset('graph')">↺</button></div>
+          <div id="graph" class="zoomstage"></div>
+          <div class="zoomhint">drag to pan · scroll to zoom</div>
+        </div>
+        <div id="graphlegend"></div>
+      </div>
     </section>
   </div>
 
