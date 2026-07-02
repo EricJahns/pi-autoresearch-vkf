@@ -50,6 +50,10 @@ export interface Experiment {
   metrics?: Record<string, number>;
   /** Short (7-char) commit hash capturing the change, if known. */
   commit?: string;
+  /** Per-idea branch the change was snapshotted onto (`autoresearch-vkf-<idea>`). */
+  branch?: string;
+  /** Web URL to the exact snapshot commit (built from `origin`), if resolvable. */
+  commit_url?: string;
   /** System part this experiment touched, inherited from the tested claim. */
   lever?: string;
   /** Size of the change, inherited from the tested claim. */

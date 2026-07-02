@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.2
+
+Per-experiment commit trail + linkable history.
+
+- **Every change is snapshotted to a per-idea branch.** Instead of a reverted
+  regression vanishing, `vkf_log_experiment` now captures the working-tree diff as
+  a commit on `autoresearch-vkf-<idea>` — giving a verifiable path back to the
+  exact change behind each experiment. The snapshot is **non-destructive**: it uses
+  a throwaway index + `write-tree`/`commit-tree`/`update-ref`, so HEAD, your index,
+  and your working tree are untouched and the loop's keep-vs-revert behaviour is
+  unchanged. New files are captured too (`.gitignore` respected); empty snapshots
+  are skipped. Lives in the new pure `git.ts`.
+- **Dashboard links to the exact commit.** Clicking an experiment node shows its
+  `commit` as a link to `…/commit/<sha>` (built from the `origin` remote —
+  GitHub/GitLab/Bitbucket) plus the `branch` it lives on. Falls back to the plain
+  short hash when there's no remote.
+
 ## 0.10.1
 
 Dashboard visualization upgrades.
