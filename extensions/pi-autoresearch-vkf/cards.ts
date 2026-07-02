@@ -22,7 +22,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   assembleCard,
@@ -517,6 +517,18 @@ function readCardFile(path: string, bucket: LifecycleDir): Card {
   return { path, bucket, meta: data, body };
 }
 
+/**
+ * Write a file atomically: stage into a sibling temp file, then `rename` into
+ * place (atomic on the same filesystem). An interrupted run then leaves either
+ * the old file or the complete new one — never a truncated or 0-byte card, which
+ * would otherwise wedge `vkf validate` (missing required fields on empty YAML).
+ */
+function writeFileAtomic(path: string, content: string): void {
+  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.tmp`);
+  writeFileSync(tmp, content, "utf8");
+  renameSync(tmp, path);
+}
+
 /** Write a freshly built card into a lifecycle bucket. Returns the path. */
 export function writeCard(
   root: string,
@@ -527,7 +539,7 @@ export function writeCard(
   const dir = lifecycleDir(root, bucket);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const path = join(dir, file);
-  writeFileSync(path, content, "utf8");
+  writeFileAtomic(path, content);
   return path;
 }
 
@@ -606,7 +618,7 @@ export function transitionCard(
   const destDir = lifecycleDir(root, bucket);
   if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
   const destPath = join(destDir, basename(card.path));
-  writeFileSync(card.path, content, "utf8");
+  writeFileAtomic(card.path, content);
   if (destPath !== card.path) {
     renameSync(card.path, destPath);
   }
@@ -656,6 +668,6 @@ export function writeTransaction(root: string, tx: TransactionInput): string {
   const dir = memoryPaths(root).transactions;
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const path = join(dir, `${stamp}-${slugify(tx.target)}.md`);
-  writeFileSync(path, assembleCard(meta, body), "utf8");
+  writeFileAtomic(path, assembleCard(meta, body));
   return path;
 }

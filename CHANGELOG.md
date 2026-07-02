@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.1
+
+Dashboard visualization upgrades.
+
+- **Progress-view toggle on the metric chart.** A new "View" button switches the
+  metric chart between the existing *over time* line (all series) and a *progress*
+  view in the standard autoresearch style: a monotonic best-so-far frontier that
+  only moves forward, with each new-best experiment a dot labelled by its
+  experiment number, and every run that did **not** improve the objective drawn as
+  a hoverable `×` on the x-axis (same tooltip detail). Non-improving runs that
+  cluster at the same x are stacked and collapse to a `+N` marker past four, so
+  near-identical metrics don't pile into an unreadable blob.
+- **Pan & zoom on the search tree and knowledge graph.** Both SVGs now support
+  drag-to-pan and scroll/`+`/`−`-to-zoom (with a reset button); the view offset and
+  zoom persist in `localStorage` and survive live `data.json` refreshes.
+- **Atomic card writes.** Cards and transaction records are now written via a
+  temp-file + `rename`, so an interrupted run can no longer leave a truncated or
+  0-byte card behind — those empty files were failing `vkf validate` with
+  spurious "missing required field 'type'" errors mid-loop.
+
 ## 0.10.0
 
 Autonomy, ideation mode, and multi-agent research. The loop now keeps itself
