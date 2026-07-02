@@ -89,7 +89,11 @@ and *which idea to apply* for you; pass its `parent_id` + `node_kind` to
      not a fixed nudge) and its lifecycle (`win` → `locally_tested`; repeated `loss`
      → `contradicted`).
    Keep wins, revert regressions — either way it's now remembered, and the node is
-   in the tree to branch from later.
+   in the tree to branch from later. `vkf_log_experiment` also snapshots the
+   working-tree change onto a per-idea branch (`autoresearch-vkf-<idea>`) before
+   you revert, so a regression is never lost: the dashboard links each node to its
+   exact commit. This is automatic and non-destructive (your HEAD/working tree are
+   untouched) — you don't manage the branch yourself.
 
 7. **Update `.autoresearch-vkf/session/prompt.md`** — bump the "Current state"
    block (iteration, best node, last/next action) and add the takeaway to the

@@ -32,6 +32,10 @@ export interface DashboardExperiment {
   metrics: Record<string, number>;
   baseline?: number;
   commit?: string;
+  /** Per-idea branch the change was snapshotted onto (`autoresearch-vkf-<idea>`). */
+  branch?: string;
+  /** Web URL to the exact snapshot commit, when a remote is resolvable. */
+  commit_url?: string;
   notes?: string;
   ts: string;
 }
@@ -217,6 +221,8 @@ export function buildDashboardData(input: BuildDashboardInput): DashboardData {
       metrics,
       baseline: e.baseline,
       commit: e.commit,
+      branch: e.branch,
+      commit_url: e.commit_url,
       notes: e.notes,
       ts: e.ts,
     };

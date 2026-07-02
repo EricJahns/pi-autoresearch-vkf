@@ -43,6 +43,7 @@ import {
 } from "./cards.ts";
 import { autonomyMode, makeConfig, readConfig, researchMode, sessionMode, writeConfig, type ResearchConfig } from "./config.ts";
 import { buildFullscreenLines } from "./dashboard.ts";
+import { branchNameForIdea, remoteCommitUrl, snapshotToBranch } from "./git.ts";
 import {
   appendExperiment,
   deriveOutcome,
@@ -70,7 +71,7 @@ import * as vkf from "./vkf.ts";
 const MAX_OUTPUT_CHARS = 16_000;
 
 /** Package version, surfaced in the dashboard footer. Keep in sync with package.json. */
-const VERSION = "0.10.1";
+const VERSION = "0.10.2";
 
 const truncate = (s: string): string =>
   s.length <= MAX_OUTPUT_CHARS
@@ -1167,10 +1168,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const parentDepth = parentId ? (depths(experiments).get(parentId) ?? 0) : -1;
       const nodeKind: NodeKind = params.node_kind ?? (parentId ? "improve" : "draft");
 
-      // Record every metric (primary included), and the commit that captured the change.
+      // Record every metric (primary included).
       const metrics = { ...(params.metrics ?? {}) };
       if (metrics[config.metricName] === undefined) metrics[config.metricName] = params.value;
-      const commit = shortCommit(params.commit, config.workingDir ?? root);
 
       // Inherit lever/altitude from the tested claim so coverage reflects what we ran.
       const testedClaim = params.claim_id ? findCard(root, params.claim_id) : undefined;
@@ -1178,8 +1178,22 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
       const altitude = testedClaim?.meta["altitude"] as string | undefined;
 
       const seq = String(experiments.length + 1).padStart(3, "0");
+      const expId = `exp-${seq}`;
+
+      // Snapshot the change onto a per-idea branch (`autoresearch-vkf-<idea>`) so a
+      // reverted regression is never lost and each node links to an exact commit.
+      // Non-destructive: HEAD/index/working tree are untouched (see git.ts). Falls
+      // back to the explicit `commit` param (or HEAD) when there's nothing to
+      // snapshot or the working dir isn't a git repo.
+      const cwd = config.workingDir ?? root;
+      const branch = branchNameForIdea(params.claim_id ?? params.description);
+      const message = `[autoresearch] ${expId} · ${outcome}: ${params.description}`.slice(0, 200);
+      const snap = snapshotToBranch(cwd, branch, message, { name: config.owner });
+      const commit = snap?.short ?? shortCommit(params.commit, cwd);
+      const commitUrl = snap ? remoteCommitUrl(cwd, snap.full) : undefined;
+
       const expEntry: Experiment = {
-        id: `exp-${seq}`,
+        id: expId,
         description: params.description,
         claim_id: params.claim_id,
         parent_id: parentId,
@@ -1188,6 +1202,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         value: params.value,
         metrics,
         commit,
+        branch: snap?.branch,
+        commit_url: commitUrl,
         lever,
         altitude,
         baseline,
@@ -1216,7 +1232,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         notes: params.notes,
         next_suggestions: params.next_suggestions,
         reproduction: { command: config.command, metric_name: config.metricName, value: params.value },
-        commit: params.commit,
+        commit: snap?.full ?? params.commit,
         lever: lever as Parameters<typeof buildExperimentCard>[0]["lever"],
         altitude: altitude as Parameters<typeof buildExperimentCard>[0]["altitude"],
         owner: config.owner,
@@ -1286,6 +1302,9 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
         [
           `${expEntry.id}: ${outcome} (${config.metricName}=${params.value}${baseline !== undefined ? `, baseline ${baseline}` : ""}).`,
           `Wrote ${card.id} to memory.`,
+          snap
+            ? `Snapshotted change to branch ${snap.branch} @ ${snap.short}${commitUrl ? ` — ${commitUrl}` : ""}.`
+            : "",
           beliefNote,
           validationNote(root, config.memoryProfile),
           `Session: ${summary.win} win / ${summary.loss} loss / ${summary.inconclusive} inconclusive (best ${config.metricName}: ${summary.best ?? "—"}).`,
